@@ -5,6 +5,7 @@ const { Readable, PassThrough } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 
+
   mutation CreateDeployment(
     $serviceId: ID!
     $projectId: ID!
@@ -13,24 +14,23 @@ const RAILWAY_API = 'https://backboard.railway.app/api';
   ) {
 const CREATE_DEPLOYMENT_MUTATION = `
   mutation CreateDeployment(
-    $serviceId: ID!
-    $projectId: ID!
-    $environmentId: ID!
-    $source: DeploymentSourceInput!
+    $serviceId: String!
+    $projectId: String!
+    $environmentId: String!
+    $files: [DeploymentFileInput!]!
   ) {
     createDeployment(
       input: {
         serviceId: $serviceId,
         projectId: $projectId,
         environmentId: $environmentId,
-        source: $source
+        files: $files
       }
     ) {
       deployment {
         id
         status
         url
-        staticUrl
       }
       errors {
         message
@@ -46,7 +46,6 @@ const GET_DEPLOYMENT_QUERY = `
       id
       status
       url
-      staticUrl
     }
   }
 `;
@@ -119,6 +118,10 @@ const handler = async (event) => {
       try {
         const deploymentData = JSON.parse(event.body);
         const { projectId, serviceId, environmentId, source } = deploymentData;
+        const files = Object.entries(source.files).map(([path, content]) => ({
+          path,
+          content
+        }));
 
         // Validate required fields
         if (!projectId || !serviceId || !environmentId || !source) {
@@ -131,7 +134,7 @@ const handler = async (event) => {
             projectId,
             serviceId,
             environmentId,
-            source
+            files
           }
         };
 
@@ -141,7 +144,7 @@ const handler = async (event) => {
             projectId,
             serviceId,
             environmentId,
-            source: { ...source, files: Object.keys(source.files) }
+            fileCount: files.length
           }
         });
       } catch (error) {
