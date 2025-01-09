@@ -116,8 +116,7 @@ const handler = async (event) => {
     // Forward the request to Railway API
     console.log('Sending request to Railway API:', {
       url,
-      method: event.httpMethod,
-      headers: requestHeaders
+      method: event.httpMethod
     });
 
     const response = await fetch(url, {
@@ -126,18 +125,22 @@ const handler = async (event) => {
         ...requestHeaders,
         'User-Agent': 'DiscordAI-Bot/1.0'
       },
-      body: requestBody
+      body: requestBody instanceof FormData ? requestBody : JSON.stringify(requestBody)
     });
 
     // Get response text first to debug
     const responseText = await response.text();
-    console.log('Raw Railway API Response:', responseText);
+    console.log('Raw Railway API Response:', {
+      status: response.status,
+      headers: Object.fromEntries(response.headers),
+      body: responseText.slice(0, 1000) // Log first 1000 chars to avoid excessive logging
+    });
 
     if (!response.ok) {
       console.error('Railway API error response:', {
         status: response.status,
         statusText: response.statusText,
-        body: responseText
+        body: responseText.slice(0, 1000)
       });
       return {
         statusCode: response.status,
@@ -146,7 +149,7 @@ const handler = async (event) => {
           error: 'Railway API request failed',
           status: response.status,
           statusText: response.statusText,
-          details: responseText
+          details: responseText.slice(0, 1000)
         })
       };
     }
@@ -156,13 +159,16 @@ const handler = async (event) => {
     try {
       data = JSON.parse(responseText);
     } catch (error) {
-      console.error('Failed to parse Railway API response:', error);
+      console.error('Failed to parse Railway API response:', {
+        error: error.message,
+        response: responseText.slice(0, 1000)
+      });
       return {
         statusCode: 500,
         headers,
         body: JSON.stringify({
           error: 'Invalid JSON response from Railway API',
-          details: responseText.slice(0, 200) // Include start of response for debugging
+          details: responseText.slice(0, 1000)
         })
       };
     }
@@ -170,7 +176,6 @@ const handler = async (event) => {
     // Enhanced response logging
     console.log('Railway API Response:', {
       status: response.status,
-      headers: Object.fromEntries(response.headers),
       data
     });
 
