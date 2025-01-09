@@ -3,59 +3,29 @@ const { FormData } = require('formdata-node');
 const { FormDataEncoder } = require('form-data-encoder');
 const { Readable, PassThrough } = require('stream');
 
+// Debug utilities
+const debugLog = (stage, data) => {
+  const timestamp = new Date().toISOString();
+  console.group(`🚂 Railway Function [${stage}] - ${timestamp}`);
+  console.log(JSON.stringify(data, null, 2));
+  console.groupEnd();
+};
+
+const createErrorResponse = (status, message, details = null) => {
+  const error = {
+    timestamp: new Date().toISOString(),
+    error: message,
+    ...(details && { details })
+  };
+  debugLog('Error Response', error);
+  return error;
+};
+
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'https://discordai.net'
 ];
-
-// Helper to parse multipart form data
-async function parseMultipartForm(event) {
-  if (!event.body) return null;
-  
-  const boundary = event.headers['content-type']?.split('boundary=')[1];
-  if (!boundary) return null;
-
-  try {
-    // Create a new FormData instance
-    const formData = new FormData();
-    
-    // Convert base64 body to buffer if needed
-    const body = event.isBase64Encoded 
-      ? Buffer.from(event.body, 'base64')
-      : Buffer.from(event.body, 'binary');
-    
-    const bodyStr = body.toString();
-    const parts = bodyStr.split(`--${boundary}`);
-
-    for (const part of parts) {
-      if (part.includes('name="deployment"')) {
-        const matches = part.match(/Content-Type: ([^\r\n]+)[\r\n]+[\r\n]+([\s\S]*?)(?=[\r\n]*--)/);
-        if (matches && matches[2]) {
-          const contentType = matches[1].trim();
-          const content = matches[2];
-          
-          // Create a buffer from the content
-          const fileBuffer = Buffer.from(content, 'binary');
-          
-          // Create a Blob with the correct type
-          const blob = new Blob([fileBuffer], { type: contentType });
-          
-          // Append to FormData with filename
-          formData.append('deployment', blob, {
-            filename: 'deployment.zip',
-            contentType: contentType
-          });
-        }
-      }
-    }
-
-    return formData;
-  } catch (error) {
-    console.error('Error parsing multipart form:', error);
-    return null;
-  }
-}
 
 const handler = async (event) => {
   // Enable CORS
@@ -79,19 +49,21 @@ const handler = async (event) => {
 
   // Only allow POST and GET requests
   if (!['POST', 'GET'].includes(event.httpMethod)) {
+    debugLog('Invalid Method', { method: event.httpMethod });
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify({ error: 'Method not allowed' }),
+      body: JSON.stringify(createErrorResponse(405, 'Method not allowed')),
     };
   }
 
   const railwayToken = event.headers.authorization;
   if (!railwayToken || !railwayToken.startsWith('Bearer ')) {
+    debugLog('Invalid Token', { token: railwayToken?.slice(0, 10) + '...' });
     return {
       statusCode: 401,
       headers,
-      body: JSON.stringify({ error: 'Missing or invalid Railway API token format' }),
+      body: JSON.stringify(createErrorResponse(401, 'Missing or invalid Railway API token format')),
     };
   }
 
@@ -104,8 +76,7 @@ const handler = async (event) => {
     console.log('Railway API Request:', {
       method: event.httpMethod,
       url,
-      headers: event.headers,
-      body: event.body ? JSON.parse(event.body) : undefined
+      headers: event.headers
     });
 
     // Handle form data for POST requests
@@ -116,41 +87,26 @@ const handler = async (event) => {
     };
 
     if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
-      requestBody = await parseMultipartForm(event);
-      if (!requestBody) {
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ 
-            error: 'Failed to parse deployment data',
-            details: 'Could not process multipart form data'
-          })
-        };
-      }
-      
-      // Encode FormData for sending
-      const encoder = new FormDataEncoder(requestBody);
-      const readable = Readable.from(encoder.encode());
-      
-      requestHeaders = {
-        'Authorization': railwayToken,
-        'Content-Type': encoder.contentType
-      };
-      
-      requestBody = readable;
-    }
+      debugLog('Processing POST Request', {
+        contentType: event.headers['content-type'],
+        bodyPreview: event.body.slice(0, 200)
+      });
 
-    // Forward the request to Railway API
-    console.log('Sending request to Railway API:', {
-      url,
-      method: event.httpMethod
-    });
+      try {
+        requestBody = event.body;
+        debugLog('Request Body Processed', { 
+          type: typeof requestBody,
+          preview: typeof requestBody === 'string' ? requestBody.slice(0, 200) : 'FormData'
+        });
+      } catch (error) {
+        debugLog('Request Processing Error', { error: error.message, stack: error.stack });
+        throw new Error('Failed to process deployment data');
+      }
+    }
 
     const response = await fetch(url, {
       method: event.httpMethod,
-      headers: {
-        ...requestHeaders
-      },
+      headers: { ...requestHeaders },
       body: requestBody instanceof Readable ? requestBody : 
             typeof requestBody === 'string' ? requestBody :
             JSON.stringify(requestBody)
