@@ -4,6 +4,22 @@ const { FormDataEncoder } = require('form-data-encoder');
 const { Readable, PassThrough } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
+const CREATE_DEPLOYMENT_MUTATION = `
+  mutation CreateDeployment($serviceId: String!, $projectId: String!, $environmentId: String!) {
+    createDeployment(
+      input: {
+        serviceId: $serviceId,
+        projectId: $projectId,
+        environmentId: $environmentId
+      }
+    ) {
+      id
+      status
+      url
+    }
+  }
+`;
+
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
   'https://discordai.net'
@@ -50,37 +66,42 @@ const handler = async (event) => {
   try {
     // Extract the Railway API path from the request
     const path = event.path.replace('/.netlify/functions/railway', '');
-    const url = `${RAILWAY_API}${path}`;
+    const url = RAILWAY_API;
 
     // Enhanced request logging
     console.log('Railway API Request:', {
       method: event.httpMethod,
       url,
       headers: event.headers,
-      path
+      path,
+      body: event.body ? JSON.parse(event.body) : null
     });
 
-    // Handle form data for POST requests
-    let requestBody = event.body;
+    // Prepare GraphQL request
+    let requestBody;
     let requestHeaders = {
       'Authorization': railwayToken,
-      'Content-Type': event.headers['content-type'] || 'application/json'
+      'Content-Type': 'application/json'
     };
 
-    if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
+    if (event.httpMethod === 'POST') {
       try {
-        // Create a new FormData instance
-        const formData = new FormData();
-        
-        // Parse the JSON body to get the deployment data
         const deploymentData = JSON.parse(event.body);
-        
-        // Add the deployment data as a file
-        formData.append('deployment', new Blob([JSON.stringify(deploymentData)], {
-          type: 'application/json'
-        }), 'deployment.json');
-        
-        requestBody = formData;
+        const { projectId, serviceId, environmentId } = deploymentData;
+
+        requestBody = {
+          query: CREATE_DEPLOYMENT_MUTATION,
+          variables: {
+            projectId,
+            serviceId,
+            environmentId
+          }
+        };
+
+        console.log('GraphQL Request:', {
+          query: CREATE_DEPLOYMENT_MUTATION,
+          variables: { projectId, serviceId, environmentId }
+        });
       } catch (error) {
         console.error('Error creating deployment data:', error);
         throw new Error('Failed to process deployment data');
@@ -94,9 +115,7 @@ const handler = async (event) => {
     const response = await fetch(url, {
       method: event.httpMethod,
       headers: requestHeaders,
-      body: requestBody instanceof Readable ? requestBody : 
-            typeof requestBody === 'string' ? requestBody :
-            JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody)
     }).catch(error => {
       console.error('Fetch error:', error);
       throw error;
@@ -122,14 +141,20 @@ const handler = async (event) => {
       console.error('Railway API error response:', {
         status: response.status,
         statusText: response.statusText,
-        body: responseText
+        body: responseText,
+        headers: Object.fromEntries(response.headers)
       });
       return {
         statusCode: response.status,
         headers,
         body: JSON.stringify({
           error: 'Railway API request failed',
-          details: responseText
+          details: responseText,
+          request: {
+            url,
+            method: event.httpMethod,
+            headers: requestHeaders
+          }
         })
       };
     }
