@@ -4,18 +4,43 @@ const { FormDataEncoder } = require('form-data-encoder');
 const { Readable, PassThrough } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
+  mutation CreateDeployment(
+    $serviceId: ID!
+    $projectId: ID!
+    $environmentId: ID!
+    $source: DeploymentSourceInput!
+  ) {
 const CREATE_DEPLOYMENT_MUTATION = `
   mutation CreateDeployment($serviceId: String!, $projectId: String!, $environmentId: String!) {
     createDeployment(
       input: {
         serviceId: $serviceId,
         projectId: $projectId,
-        environmentId: $environmentId
+        environmentId: $environmentId,
+        source: $source
       }
     ) {
+      deployment {
+        id
+        status
+        url
+        staticUrl
+      }
+      errors {
+        message
+        code
+      }
+    }
+  }
+`;
+
+const GET_DEPLOYMENT_QUERY = `
+  query GetDeployment($id: ID!) {
+    deployment(id: $id) {
       id
       status
       url
+      staticUrl
     }
   }
 `;
@@ -87,30 +112,56 @@ const handler = async (event) => {
     if (event.httpMethod === 'POST') {
       try {
         const deploymentData = JSON.parse(event.body);
-        const { projectId, serviceId, environmentId } = deploymentData;
+        const { projectId, serviceId, environmentId, source } = deploymentData;
+
+        // Validate required fields
+        if (!projectId || !serviceId || !environmentId || !source) {
+          throw new Error('Missing required deployment fields');
+        }
 
         requestBody = {
           query: CREATE_DEPLOYMENT_MUTATION,
           variables: {
             projectId,
             serviceId,
-            environmentId
+            environmentId,
+            source
           }
         };
 
         console.log('GraphQL Request:', {
           query: CREATE_DEPLOYMENT_MUTATION,
-          variables: { projectId, serviceId, environmentId }
+          variables: {
+            projectId,
+            serviceId,
+            environmentId,
+            source: { ...source, files: Object.keys(source.files) }
+          }
         });
       } catch (error) {
         console.error('Error creating deployment data:', error);
-        throw new Error('Failed to process deployment data');
+        throw new Error(`Failed to process deployment data: ${error.message}`);
       }
     }
-
-      url,
-      method: event.httpMethod
-    });
+    
+    // Handle GET requests for deployment status
+    if (event.httpMethod === 'GET') {
+      const deploymentId = event.queryStringParameters?.id;
+      if (!deploymentId) {
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Missing deployment ID' })
+        };
+      }
+      
+      requestBody = {
+        query: GET_DEPLOYMENT_QUERY,
+        variables: {
+          id: deploymentId
+        }
+      };
+    }
 
     const response = await fetch(url, {
       method: event.httpMethod,
@@ -144,6 +195,31 @@ const handler = async (event) => {
         body: responseText,
         headers: Object.fromEntries(response.headers)
       });
+
+      // Check for specific GraphQL errors
+      try {
+        const errorData = JSON.parse(responseText);
+        if (errorData.errors) {
+          const graphqlErrors = errorData.errors.map(e => ({
+            message: e.message,
+            code: e.extensions?.code || 'UNKNOWN',
+            path: e.path
+          }));
+          
+          return {
+            statusCode: response.status,
+            headers,
+            body: JSON.stringify({
+              error: 'Railway GraphQL Error',
+              details: graphqlErrors.map(e => e.message).join(', '),
+              errors: graphqlErrors
+            })
+          };
+        }
+      } catch (e) {
+        // If we can't parse the error response, continue with generic error
+      }
+
       return {
         statusCode: response.status,
         headers,
@@ -153,7 +229,7 @@ const handler = async (event) => {
           request: {
             url,
             method: event.httpMethod,
-            headers: requestHeaders
+            headers: Object.fromEntries(Object.entries(requestHeaders).filter(([key]) => key !== 'Authorization'))
           }
         })
       };
