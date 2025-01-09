@@ -4,6 +4,7 @@ const { FormDataEncoder } = require('form-data-encoder');
 const { Readable, PassThrough } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
+
   mutation CreateDeployment(
     $serviceId: ID!
     $projectId: ID!
@@ -11,7 +12,12 @@ const RAILWAY_API = 'https://backboard.railway.app/api';
     $source: DeploymentSourceInput!
   ) {
 const CREATE_DEPLOYMENT_MUTATION = `
-  mutation CreateDeployment($serviceId: String!, $projectId: String!, $environmentId: String!) {
+  mutation CreateDeployment(
+    $serviceId: ID!
+    $projectId: ID!
+    $environmentId: ID!
+    $source: DeploymentSourceInput!
+  ) {
     createDeployment(
       input: {
         serviceId: $serviceId,
