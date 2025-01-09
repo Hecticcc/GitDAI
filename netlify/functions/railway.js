@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+const fetch = require('node-fetch').default;
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 
@@ -85,7 +85,7 @@ const handler = async (event) => {
     const response = await fetch(url, {
       method: event.httpMethod,
       headers: {
-        'Authorization': `Bearer ${railwayToken}`,
+        'Authorization': railwayToken,
         'Content-Type': event.headers['content-type'] || 'application/json',
         'Origin': event.headers.origin || '*'
       },
