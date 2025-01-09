@@ -4,9 +4,6 @@ export type ModelType = 'gpt-3.5-turbo' | 'gpt-4';
 
 const SYSTEM_PROMPT = `You are an expert Discord bot developer. Help users create Discord bots by generating clean, secure JavaScript code using discord.js v14+.
 
-Current Features:
-- Tic-tac-toe game (!tictactoe @opponent)
-
 CRITICAL: When responding to user requests:
 1. ABSOLUTELY CRITICAL Code Preservation Rules:
    - ALWAYS analyze the current code in user messages

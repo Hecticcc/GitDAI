@@ -1,4 +1,5 @@
-const fetch = require('node-fetch').default;
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
@@ -11,37 +12,30 @@ async function parseMultipartForm(event) {
   if (!event.body) return null;
   
   const boundary = event.headers['content-type']?.split('boundary=')[1];
-  if (!boundary) {
-    console.error('No boundary found in content-type');
-    return null;
-  }
+  if (!boundary) return null;
 
-  const parts = event.body.split(`--${boundary}`);
-  const formData = new FormData();
+  try {
+    const formData = new FormData();
+    const parts = event.body.split(`--${boundary}`);
 
-  for (const part of parts) {
-    if (part.includes('name="deployment"')) {
-      let content = part.split('\r\n\r\n')[1];
-      if (!content) continue;
-      
-      // Remove the trailing boundary if it exists
-      const boundaryIndex = content.lastIndexOf('\r\n--');
-      if (boundaryIndex !== -1) {
-        content = content.substring(0, boundaryIndex);
-      }
-      
-      if (content) {
-        try {
-          formData.append('deployment', new Blob([content], { type: 'application/zip' }), 'deployment.zip');
-        } catch (error) {
-          console.error('Error creating deployment blob:', error);
-          throw new Error('Failed to process deployment file');
+    for (const part of parts) {
+      if (part.includes('name="deployment"')) {
+        const matches = part.match(/Content-Type: (.*?)\r\n\r\n([\s\S]*?)(?:\r\n--|\Z)/);
+        if (matches && matches[2]) {
+          const content = Buffer.from(matches[2], 'binary');
+          formData.append('deployment', content, {
+            filename: 'deployment.zip',
+            contentType: 'application/zip'
+          });
         }
       }
     }
-  }
 
-  return formData;
+    return formData;
+  } catch (error) {
+    console.error('Error parsing multipart form:', error);
+    return null;
+  }
 }
 
 const handler = async (event) => {
@@ -98,20 +92,12 @@ const handler = async (event) => {
     // Handle form data for POST requests
     let requestBody = event.body;
     if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
-      try {
-        requestBody = await parseMultipartForm(event);
-        if (!requestBody) {
-          throw new Error('Failed to parse multipart form data');
-        }
-      } catch (error) {
-        console.error('Form data parsing error:', error);
+      requestBody = await parseMultipartForm(event);
+      if (!requestBody) {
         return {
           statusCode: 400,
           headers,
-          body: JSON.stringify({ 
-            error: 'Failed to process deployment data',
-            details: error.message
-          })
+          body: JSON.stringify({ error: 'Failed to parse deployment data' })
         };
       }
     }
@@ -178,4 +164,4 @@ const handler = async (event) => {
   }
 };
 
-exports.handler = handler;
+export { handler };
