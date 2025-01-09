@@ -114,6 +114,12 @@ const handler = async (event) => {
     }
 
     // Forward the request to Railway API
+    console.log('Sending request to Railway API:', {
+      url,
+      method: event.httpMethod,
+      headers: requestHeaders
+    });
+
     const response = await fetch(url, {
       method: event.httpMethod,
       headers: {
@@ -123,10 +129,15 @@ const handler = async (event) => {
       body: requestBody
     });
 
+    // Get response text first to debug
+    const responseText = await response.text();
+    console.log('Raw Railway API Response:', responseText);
+
     if (!response.ok) {
       console.error('Railway API error response:', {
         status: response.status,
-        statusText: response.statusText
+        statusText: response.statusText,
+        body: responseText
       });
       return {
         statusCode: response.status,
@@ -134,13 +145,27 @@ const handler = async (event) => {
         body: JSON.stringify({
           error: 'Railway API request failed',
           status: response.status,
-          statusText: response.statusText
+          statusText: response.statusText,
+          details: responseText
         })
       };
     }
 
-    // Get response data
-    const data = await response.json();
+    // Try to parse JSON response
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (error) {
+      console.error('Failed to parse Railway API response:', error);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Invalid JSON response from Railway API',
+          details: responseText.slice(0, 200) // Include start of response for debugging
+        })
+      };
+    }
 
     // Enhanced response logging
     console.log('Railway API Response:', {
