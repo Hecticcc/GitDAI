@@ -159,64 +159,77 @@ const handler = async (event) => {
       throw error;
     });
 
-    // Get response text first to debug
-    const responseText = await response.text();
+    // Log response headers for debugging
+    console.log('Railway API Response Headers:', {
+      status: response.status,
+      headers: Object.fromEntries(response.headers)
+    });
+
+    // Get response as buffer first
+    const buffer = await response.buffer();
+    const responseText = buffer.toString('utf-8');
+
     console.log('Raw Railway API Response:', {
       status: response.status,
-      headers: Object.fromEntries(response.headers),
-      body: responseText.slice(0, 1000) // Log first 1000 chars to avoid excessive logging
+      contentType: response.headers.get('content-type'),
+      bodyPreview: responseText.slice(0, 200) // Log first 200 chars
     });
 
     if (!response.ok) {
       console.error('Railway API error response:', {
         status: response.status,
         statusText: response.statusText,
-        body: responseText.slice(0, 1000)
+        body: responseText
       });
       return {
         statusCode: response.status,
         headers,
         body: JSON.stringify({
           error: 'Railway API request failed',
-          status: response.status,
-          statusText: response.statusText,
-          details: responseText.slice(0, 1000)
+          details: responseText
         })
       };
     }
 
-    // Try to parse JSON response
+    // Try to parse JSON response if content type is JSON
+    const contentType = response.headers.get('content-type');
     let data;
-    try {
-      data = JSON.parse(responseText);
-    } catch (error) {
-      console.error('Failed to parse Railway API response:', {
-        error: error.message,
-        response: responseText.slice(0, 1000)
-      });
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          error: 'Invalid JSON response from Railway API',
-          details: responseText.slice(0, 1000)
-        })
-      };
+    if (contentType?.includes('application/json')) {
+      try {
+        data = JSON.parse(responseText);
+      } catch (error) {
+        console.error('Failed to parse JSON response:', {
+          error: error.message,
+          responsePreview: responseText.slice(0, 200)
+        });
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({
+            error: 'Invalid JSON response from Railway API',
+            details: error.message
+          })
+        };
+      }
+    } else {
+      // For non-JSON responses, return the raw text
+      data = { message: responseText };
     }
 
     // Enhanced response logging
     console.log('Railway API Response:', {
       status: response.status,
-      data
+      contentType,
+      data: typeof data === 'object' ? data : { text: data }
     });
 
     return {
       statusCode: response.status,
       headers: {
         ...headers,
-        'Content-Type': 'application/json'
+        'Content-Type': contentType || 'application/json'
       },
-      body: JSON.stringify(data),
+      body: typeof data === 'object' ? JSON.stringify(data) : data,
     };
   } catch (error) {
     console.error('Railway API proxy error:', error);
