@@ -1,5 +1,5 @@
-import fetch from 'node-fetch';
-import FormData from 'form-data';
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const FormData = require('form-data');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
@@ -68,11 +68,11 @@ const handler = async (event) => {
   }
 
   const railwayToken = event.headers.authorization;
-  if (!railwayToken) {
+  if (!railwayToken || !railwayToken.startsWith('Bearer ')) {
     return {
       statusCode: 401,
       headers,
-      body: JSON.stringify({ error: 'Missing Railway API token' }),
+      body: JSON.stringify({ error: 'Missing or invalid Railway API token format' }),
     };
   }
 
@@ -91,6 +91,12 @@ const handler = async (event) => {
 
     // Handle form data for POST requests
     let requestBody = event.body;
+    let requestHeaders = {
+      'Authorization': `Bearer ${railwayToken}`,
+      'Content-Type': event.headers['content-type'] || 'application/json',
+      'Origin': event.headers.origin || '*'
+    };
+
     if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
       requestBody = await parseMultipartForm(event);
       if (!requestBody) {
@@ -100,15 +106,19 @@ const handler = async (event) => {
           body: JSON.stringify({ error: 'Failed to parse deployment data' })
         };
       }
+      // Let FormData set the correct headers including boundary
+      requestHeaders = {
+        'Authorization': `Bearer ${railwayToken}`,
+        ...requestBody.getHeaders()
+      };
     }
 
     // Forward the request to Railway API
     const response = await fetch(url, {
       method: event.httpMethod,
       headers: {
-        'Authorization': `Bearer ${railwayToken}`,
-        'Content-Type': event.headers['content-type'] || 'application/json',
-        'Origin': event.headers.origin || '*'
+        ...requestHeaders,
+        'User-Agent': 'DiscordAI-Bot/1.0'
       },
       body: requestBody
     });
@@ -164,4 +174,4 @@ const handler = async (event) => {
   }
 };
 
-export { handler };
+exports.handler = handler;
