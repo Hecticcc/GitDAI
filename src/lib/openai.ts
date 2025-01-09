@@ -92,8 +92,12 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
     debug({ stage: 'Request Messages', data: messages });
 
     // Validate API key
-    if (!import.meta.env.VITE_OPENAI_API_KEY?.startsWith('sk-')) {
-      throw new Error('Invalid API key format');
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenAI API key not found in environment variables');
+    }
+    if (!apiKey.startsWith('sk-')) {
+      throw new Error('Invalid OpenAI API key format');
     }
 
     const requestBody = {
@@ -114,7 +118,7 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
       body: JSON.stringify(requestBody),
     });

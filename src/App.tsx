@@ -184,6 +184,28 @@ function App() {
     }]);
   };
 
+  // Validate environment variables on component mount
+  React.useEffect(() => {
+    const requiredEnvVars = {
+      'OpenAI API Key': import.meta.env.VITE_OPENAI_API_KEY,
+      'Railway Project ID': import.meta.env.VITE_RAILWAY_PROJECT_ID,
+      'Railway Environment ID': import.meta.env.VITE_RAILWAY_ENVIRONMENT_ID,
+      'Railway Service ID': import.meta.env.VITE_RAILWAY_SERVICE_ID,
+      'Railway API Token': import.meta.env.VITE_RAILWAY_API_TOKEN
+    };
+
+    const missingVars = Object.entries(requiredEnvVars)
+      .filter(([_, value]) => !value)
+      .map(([name]) => name);
+
+    if (missingVars.length > 0) {
+      setMessages(prev => [...prev, {
+        type: 'system',
+        content: `Error: Missing required environment variables:\n${missingVars.join('\n')}\n\nPlease ensure all environment variables are set.`,
+        isSolution: true
+      }]);
+    }
+  }, []);
   const handleDownload = () => {
     const zip = new JSZip();
     
