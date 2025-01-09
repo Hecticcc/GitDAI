@@ -1,5 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
-const FormData = require('form-data');
+const { FormData } = require('formdata-node');
+const { FormDataEncoder } = require('form-data-encoder');
+const { Readable } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
@@ -16,17 +18,14 @@ async function parseMultipartForm(event) {
 
   try {
     const formData = new FormData();
-    const parts = event.body.split(`--${boundary}`);
+    const buffer = Buffer.from(event.body, 'binary');
+    const parts = buffer.toString().split(`--${boundary}`);
 
     for (const part of parts) {
       if (part.includes('name="deployment"')) {
         const matches = part.match(/Content-Type: (.*?)\r\n\r\n([\s\S]*?)(?:\r\n--|\Z)/);
         if (matches && matches[2]) {
-          const content = Buffer.from(matches[2], 'binary');
-          formData.append('deployment', content, {
-            filename: 'deployment.zip',
-            contentType: 'application/zip'
-          });
+          formData.append('deployment', new Blob([matches[2]], { type: 'application/zip' }), 'deployment.zip');
         }
       }
     }
@@ -92,7 +91,7 @@ const handler = async (event) => {
     // Handle form data for POST requests
     let requestBody = event.body;
     let requestHeaders = {
-      'Authorization': `Bearer ${railwayToken}`,
+      'Authorization': railwayToken,
       'Content-Type': event.headers['content-type'] || 'application/json',
       'Origin': event.headers.origin || '*'
     };
@@ -103,14 +102,23 @@ const handler = async (event) => {
         return {
           statusCode: 400,
           headers,
-          body: JSON.stringify({ error: 'Failed to parse deployment data' })
+          body: JSON.stringify({ 
+            error: 'Failed to parse deployment data',
+            details: 'Could not process multipart form data'
+          })
         };
       }
-      // Let FormData set the correct headers including boundary
+      
+      // Encode FormData for sending
+      const encoder = new FormDataEncoder(requestBody);
+      const readable = Readable.from(encoder);
+      
       requestHeaders = {
-        'Authorization': `Bearer ${railwayToken}`,
-        ...requestBody.getHeaders()
+        'Authorization': railwayToken,
+        'Content-Type': encoder.contentType
       };
+      
+      requestBody = readable;
     }
 
     // Forward the request to Railway API
@@ -125,7 +133,9 @@ const handler = async (event) => {
         ...requestHeaders,
         'User-Agent': 'DiscordAI-Bot/1.0'
       },
-      body: requestBody instanceof FormData ? requestBody : JSON.stringify(requestBody)
+      body: requestBody instanceof Readable ? requestBody : 
+            typeof requestBody === 'string' ? requestBody :
+            JSON.stringify(requestBody)
     });
 
     // Get response text first to debug
