@@ -558,6 +558,10 @@ ${messages
           </div>
         </div>
       </main>
+      {/* Version Badge */}
+      <div className="fixed bottom-4 right-4 px-2 py-1 text-xs font-medium bg-[#2F3136] text-[#7289DA] rounded-full border border-[#7289DA]/20 shadow-lg backdrop-blur-sm">
+        v0.8.1
+      </div>
     </div>
   );
 }
