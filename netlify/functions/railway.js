@@ -3,24 +3,6 @@ const { FormData } = require('formdata-node');
 const { FormDataEncoder } = require('form-data-encoder');
 const { Readable, PassThrough } = require('stream');
 
-// Debug utilities
-const debugLog = (stage, data) => {
-  const timestamp = new Date().toISOString();
-  console.group(`🚂 Railway Function [${stage}] - ${timestamp}`);
-  console.log(JSON.stringify(data, null, 2));
-  console.groupEnd();
-};
-
-const createErrorResponse = (status, message, details = null) => {
-  const error = {
-    timestamp: new Date().toISOString(),
-    error: message,
-    ...(details && { details })
-  };
-  debugLog('Error Response', error);
-  return error;
-};
-
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
   'http://localhost:5173',
@@ -49,21 +31,19 @@ const handler = async (event) => {
 
   // Only allow POST and GET requests
   if (!['POST', 'GET'].includes(event.httpMethod)) {
-    debugLog('Invalid Method', { method: event.httpMethod });
     return {
       statusCode: 405,
       headers,
-      body: JSON.stringify(createErrorResponse(405, 'Method not allowed')),
+      body: JSON.stringify({ error: 'Method not allowed' }),
     };
   }
 
   const railwayToken = event.headers.authorization;
   if (!railwayToken || !railwayToken.startsWith('Bearer ')) {
-    debugLog('Invalid Token', { token: railwayToken?.slice(0, 10) + '...' });
     return {
       statusCode: 401,
       headers,
-      body: JSON.stringify(createErrorResponse(401, 'Missing or invalid Railway API token format')),
+      body: JSON.stringify({ error: 'Missing or invalid Railway API token format' }),
     };
   }
 
@@ -76,7 +56,8 @@ const handler = async (event) => {
     console.log('Railway API Request:', {
       method: event.httpMethod,
       url,
-      headers: event.headers
+      headers: event.headers,
+      path
     });
 
     // Handle form data for POST requests
@@ -87,26 +68,32 @@ const handler = async (event) => {
     };
 
     if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
-      debugLog('Processing POST Request', {
-        contentType: event.headers['content-type'],
-        bodyPreview: event.body.slice(0, 200)
-      });
-
       try {
-        requestBody = event.body;
-        debugLog('Request Body Processed', { 
-          type: typeof requestBody,
-          preview: typeof requestBody === 'string' ? requestBody.slice(0, 200) : 'FormData'
-        });
+        // Create a new FormData instance
+        const formData = new FormData();
+        
+        // Parse the JSON body to get the deployment data
+        const deploymentData = JSON.parse(event.body);
+        
+        // Add the deployment data as a file
+        formData.append('deployment', new Blob([JSON.stringify(deploymentData)], {
+          type: 'application/json'
+        }), 'deployment.json');
+        
+        requestBody = formData;
       } catch (error) {
-        debugLog('Request Processing Error', { error: error.message, stack: error.stack });
+        console.error('Error creating deployment data:', error);
         throw new Error('Failed to process deployment data');
       }
     }
 
+      url,
+      method: event.httpMethod
+    });
+
     const response = await fetch(url, {
       method: event.httpMethod,
-      headers: { ...requestHeaders },
+      headers: requestHeaders,
       body: requestBody instanceof Readable ? requestBody : 
             typeof requestBody === 'string' ? requestBody :
             JSON.stringify(requestBody)
