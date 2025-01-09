@@ -1,7 +1,7 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { FormData } = require('formdata-node');
 const { FormDataEncoder } = require('form-data-encoder');
-const { Readable } = require('stream');
+const { Readable, PassThrough } = require('stream');
 
 const RAILWAY_API = 'https://backboard.railway.app/api';
 const ALLOWED_ORIGINS = [
@@ -17,15 +17,35 @@ async function parseMultipartForm(event) {
   if (!boundary) return null;
 
   try {
+    // Create a new FormData instance
     const formData = new FormData();
-    const buffer = Buffer.from(event.body, 'binary');
-    const parts = buffer.toString().split(`--${boundary}`);
+    
+    // Convert base64 body to buffer if needed
+    const body = event.isBase64Encoded 
+      ? Buffer.from(event.body, 'base64')
+      : Buffer.from(event.body, 'binary');
+    
+    const bodyStr = body.toString();
+    const parts = bodyStr.split(`--${boundary}`);
 
     for (const part of parts) {
       if (part.includes('name="deployment"')) {
-        const matches = part.match(/Content-Type: (.*?)\r\n\r\n([\s\S]*?)(?:\r\n--|\Z)/);
+        const matches = part.match(/Content-Type: ([^\r\n]+)[\r\n]+[\r\n]+([\s\S]*?)(?=[\r\n]*--)/);
         if (matches && matches[2]) {
-          formData.append('deployment', new Blob([matches[2]], { type: 'application/zip' }), 'deployment.zip');
+          const contentType = matches[1].trim();
+          const content = matches[2];
+          
+          // Create a buffer from the content
+          const fileBuffer = Buffer.from(content, 'binary');
+          
+          // Create a Blob with the correct type
+          const blob = new Blob([fileBuffer], { type: contentType });
+          
+          // Append to FormData with filename
+          formData.append('deployment', blob, {
+            filename: 'deployment.zip',
+            contentType: contentType
+          });
         }
       }
     }
@@ -92,8 +112,7 @@ const handler = async (event) => {
     let requestBody = event.body;
     let requestHeaders = {
       'Authorization': railwayToken,
-      'Content-Type': event.headers['content-type'] || 'application/json',
-      'Origin': event.headers.origin || '*'
+      'Content-Type': event.headers['content-type'] || 'application/json'
     };
 
     if (event.httpMethod === 'POST' && event.headers['content-type']?.includes('multipart/form-data')) {
@@ -111,7 +130,7 @@ const handler = async (event) => {
       
       // Encode FormData for sending
       const encoder = new FormDataEncoder(requestBody);
-      const readable = Readable.from(encoder);
+      const readable = Readable.from(encoder.encode());
       
       requestHeaders = {
         'Authorization': railwayToken,
@@ -130,12 +149,14 @@ const handler = async (event) => {
     const response = await fetch(url, {
       method: event.httpMethod,
       headers: {
-        ...requestHeaders,
-        'User-Agent': 'DiscordAI-Bot/1.0'
+        ...requestHeaders
       },
       body: requestBody instanceof Readable ? requestBody : 
             typeof requestBody === 'string' ? requestBody :
             JSON.stringify(requestBody)
+    }).catch(error => {
+      console.error('Fetch error:', error);
+      throw error;
     });
 
     // Get response text first to debug
