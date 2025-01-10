@@ -243,6 +243,65 @@ export async function createPterodactylServer(name: string, description?: string
   }
 }
 
+export async function uploadFiles(serverId: string, files: Array<{ path: string, content: string }>) {
+  const requestId = crypto.randomUUID();
+  debugLogger.startRequest(requestId);
+
+  try {
+    debugLogger.log({
+      stage: 'Uploading Files',
+      data: {
+        serverId,
+        fileCount: files.length,
+        files: files.map(f => f.path)
+      },
+      level: 'info',
+      source: 'pterodactyl-upload',
+      requestId
+    });
+
+    const response = await fetch('/.netlify/functions/upload-files', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        serverId,
+        files
+      })
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.error || 'Failed to upload files');
+    }
+
+    debugLogger.log({
+      stage: 'Upload Complete',
+      data: responseData,
+      level: 'info',
+      source: 'pterodactyl-upload',
+      requestId
+    });
+
+    return responseData;
+  } catch (error) {
+    debugLogger.log({
+      stage: 'Upload Failed',
+      data: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
+      level: 'error',
+      source: 'pterodactyl-upload',
+      requestId
+    });
+    throw error;
+  } finally {
+    debugLogger.endRequest(requestId);
+  }
+}
 export async function testCreateServer() {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);

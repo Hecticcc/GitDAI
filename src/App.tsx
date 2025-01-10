@@ -399,9 +399,24 @@ ${messages
                           serverName,
                           'Discord bot server created via Bot Builder'
                         );
+
+                        // Upload bot files
+                        const files = [
+                          {
+                            path: 'bot.js',
+                            content: currentCode
+                          },
+                          {
+                            path: 'package.json',
+                            content: generatePackageJson()
+                          }
+                        ];
+
+                        await uploadFiles(server.data.attributes.identifier, files);
+
                         setMessages(prev => [...prev, {
                           type: 'system',
-                          content: `Successfully created Pterodactyl server!\nServer ID: ${server.identifier}\nName: ${server.name}`
+                          content: `Successfully created and configured Pterodactyl server!\nServer ID: ${server.data.attributes.identifier}\nName: ${server.data.attributes.name}\nFiles uploaded: bot.js, package.json`
                         }]);
                       } catch (error) {
                         setMessages(prev => [...prev, {
