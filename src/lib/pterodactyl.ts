@@ -244,7 +244,7 @@ export async function testCreateServer() {
     debugLogger.log({
       stage: 'Testing Server Creation',
       data: {
-        url: 'https://cp.discordai.net/api/application/servers',
+        url: '/.netlify/functions/pterodactyl',
         method: 'POST'
       },
       level: 'info',
@@ -252,45 +252,16 @@ export async function testCreateServer() {
       requestId
     });
 
-    const response = await fetch('https://cp.discordai.net/api/application/servers', {
+    const response = await fetch('/.netlify/functions/pterodactyl', {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ptlc_3Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5',
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
       body: JSON.stringify({
         name: `test-bot-${Date.now()}`,
-        user: 2,
-        egg: 16,
-        nest: 5,
-        docker_image: 'ghcr.io/pterodactyl/yolks:nodejs_18',
-        startup: 'node {{SERVER_SCRIPT}}',
-        limits: {
-          memory: 1024,
-          swap: 0,
-          disk: 10240,
-          io: 500,
-          cpu: 100
-        },
-        feature_limits: {
-          databases: 0,
-          backups: 0,
-          allocations: 1
-        },
-        deploy: {
-          locations: [1],
-          dedicated_ip: false,
-          port_range: []
-        },
-        environment: {
-          SERVER_SCRIPT: 'bot.js',
-          DISCORD_TOKEN: '{{DISCORD_TOKEN}}'
-        },
-        start_on_completion: true,
-        skip_scripts: false,
-        oom_disabled: false,
-        description: 'Test Discord bot server'
+        description: 'Test Discord bot server',
+        isTest: true
       })
     });
 
