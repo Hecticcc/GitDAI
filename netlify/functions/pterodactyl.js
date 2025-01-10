@@ -230,13 +230,12 @@ const handler = async (event, context) => {
     // Make request to Pterodactyl API
     log('Making API Request', {
       url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer [REDACTED]',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+      method: 'POST'
     });
+
+    // Add timeout to the fetch request
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
     const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
       method: 'POST',
@@ -245,8 +244,11 @@ const handler = async (event, context) => {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
-      body: JSON.stringify(serverData)
+      body: JSON.stringify(serverData),
+      signal: controller.signal
     });
+
+    clearTimeout(timeout);
 
     // Try to get response text first
     const responseText = await response.text();
@@ -293,13 +295,17 @@ const handler = async (event, context) => {
     // Handle API errors
     if (!response.ok) {
       // Check for specific error conditions
-      let errorMessage = 'Failed to create server';
-      if (response.status === 500) {
+      let errorMessage;
+      if (response.status === 502) {
+        errorMessage = 'Unable to reach Pterodactyl API. Please check the API endpoint configuration.';
+      } else if (response.status === 500) {
         errorMessage = `Pterodactyl server error: ${responseData.error || responseText.substring(0, 100)}`;
       } else if (response.status === 401) {
         errorMessage = 'Invalid or missing API credentials';
       } else if (response.status === 422) {
         errorMessage = `Invalid server configuration: ${responseData.errors?.join(', ') || 'Unknown validation error'}`;
+      } else {
+        errorMessage = 'Failed to create server';
       }
 
       const errorDetails = {
@@ -356,8 +362,12 @@ const handler = async (event, context) => {
     };
   } catch (error) {
     // Log and handle unexpected errors
+    const errorMessage = error.name === 'AbortError' 
+      ? 'Request timed out while connecting to Pterodactyl API'
+      : error.message;
+
     log('Unexpected Error', {
-      message: error.message,
+      message: errorMessage,
       stack: error.stack
     }, 'error');
 
@@ -366,7 +376,7 @@ const handler = async (event, context) => {
       headers,
       body: JSON.stringify({
         error: 'Internal server error',
-        message: error.message,
+        message: errorMessage,
         requestId,
         logs
       })
