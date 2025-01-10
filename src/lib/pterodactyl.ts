@@ -30,8 +30,9 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
+        // Use application API endpoint for more detailed status information
         const response = await fetch(
-          `${process.env.PTERODACTYL_API_URL}/api/client/servers/${serverId}`,
+          `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
           {
             method: 'GET',
             headers: {
@@ -74,7 +75,9 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
         debugLogger.log({
           stage: 'Server Status',
           data: {
-            status: responseData.attributes.status || 'unknown',
+            status: responseData.attributes.status,
+            state: responseData.attributes.state,
+            installed: responseData.attributes.container?.installed,
             identifier: responseData.attributes.identifier
           },
           level: 'info',
@@ -82,8 +85,15 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
           requestId
         });
 
-        // Return status from client API
-        return responseData.attributes.status || 'unknown';
+        // Determine actual server state
+        const installed = responseData.attributes.container?.installed === 1;
+        const status = responseData.attributes.status;
+        const state = responseData.attributes.state;
+
+        if (status === 'suspended') return 'suspended';
+        if (status === 'error' || state === 'error') return 'error';
+        if (!installed) return 'installing';
+        return 'running';
       } catch (error) {
         if (error.name === 'AbortError') {
           throw new Error('Request timed out while checking server status');
@@ -171,10 +181,8 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     // Calculate exponential backoff delay with max limit
     let sleepTime = INSTALLATION_CHECK_INTERVAL;
     if (consecutiveErrors > 0) {
-      sleepTime = Math.min(
-        INSTALLATION_CHECK_INTERVAL * Math.pow(1.5, consecutiveErrors - 1),
-        maxRetryDelay
-      );
+      // More aggressive backoff for network issues
+      sleepTime = Math.min(INSTALLATION_CHECK_INTERVAL * Math.pow(2, consecutiveErrors), maxRetryDelay);
     }
       
     await sleep(sleepTime);
