@@ -239,65 +239,106 @@ export async function createPterodactylServer(name: string, description?: string
 export async function testCreateServer() {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+  let attempt = 1;
+  const maxAttempts = 3;
 
   try {
-    debugLogger.log({
-      stage: 'Testing Server Creation',
-      data: {
-        url: '/.netlify/functions/pterodactyl?test=true',
-        method: 'POST'
-      },
-      level: 'info',
-      source: 'pterodactyl-test',
-      requestId
-    });
-
-    const response = await fetch('/.netlify/functions/pterodactyl?test=true', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({
-        name: `test-bot-${Date.now()}`,
-        description: 'Test Discord bot server',
-        test: true
-      })
-    });
-
-    const responseText = await response.text();
-    debugLogger.log({
-      stage: 'Raw Test Response',
-      data: {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers),
-        body: responseText
-      },
-      level: response.ok ? 'info' : 'error',
-      source: 'pterodactyl-test',
-      requestId
-    });
-
-    let responseData;
-    try {
-      responseData = JSON.parse(responseText);
+    while (attempt <= maxAttempts) {
       debugLogger.log({
-        stage: 'Parsed Test Response',
-        data: responseData,
+        stage: 'Testing Server Creation',
+        data: {
+          url: '/.netlify/functions/pterodactyl?test=true',
+          method: 'POST',
+          attempt,
+          maxAttempts
+        },
         level: 'info',
         source: 'pterodactyl-test',
         requestId
       });
-    } catch (error) {
-      throw new Error(`Failed to parse response: ${responseText}`);
-    }
 
-    if (!response.ok) {
-      throw new Error(responseData.error || 'Failed to create test server');
-    }
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-    return responseData;
+        const response = await fetch('/.netlify/functions/pterodactyl?test=true', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            name: `test-bot-${Date.now()}`,
+            description: 'Test Discord bot server',
+            test: true
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        const responseText = await response.text();
+        debugLogger.log({
+          stage: 'Raw Test Response',
+          data: {
+            status: response.status,
+            statusText: response.statusText,
+            headers: Object.fromEntries(response.headers),
+            body: responseText
+          },
+          level: response.ok ? 'info' : 'error',
+          source: 'pterodactyl-test',
+          requestId
+        });
+
+        // If we get a 502, retry
+        if (response.status === 502 && attempt < maxAttempts) {
+          debugLogger.log({
+            stage: 'Retrying after 502',
+            data: { attempt, delay: attempt * 1000 },
+            level: 'warn',
+            source: 'pterodactyl-test',
+            requestId
+          });
+          await sleep(attempt * 1000); // Exponential backoff
+          attempt++;
+          continue;
+        }
+
+        let responseData;
+        try {
+          responseData = JSON.parse(responseText);
+          debugLogger.log({
+            stage: 'Parsed Test Response',
+            data: responseData,
+            level: 'info',
+            source: 'pterodactyl-test',
+            requestId
+          });
+        } catch (error) {
+          if (response.status === 502) {
+            throw new Error('Netlify function is not responding. Please check if the function is properly deployed and configured.');
+          }
+          throw new Error(`Failed to parse response: ${responseText}`);
+        }
+
+        if (!response.ok) {
+          throw new Error(responseData.error || 'Failed to create test server');
+        }
+
+        return responseData;
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out. The Netlify function may be taking too long to respond.');
+        }
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+        attempt++;
+        await sleep(1000 * attempt);
+      }
+    }
+    throw new Error('Maximum retry attempts reached');
   } catch (error) {
     debugLogger.log({
       stage: 'Test Request Failed',

@@ -1,4 +1,6 @@
-const fetch = require('node-fetch');
+import fetch from 'node-fetch';
+
+export const handler = async (event, context) => {
 
 // Required environment variables
 const requiredEnvVars = {
@@ -220,42 +222,34 @@ const handler = async (event, context) => {
 
     // Prepare server creation payload
     const serverData = {
-      name: requestData.name,
-      user: Number(process.env.PTERODACTYL_USER_ID) || 1,
-      egg: Number(process.env.PTERODACTYL_EGG_ID) || 15,
-      docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
-      startup: "node {{SERVER_SCRIPT}}",
+      name: requestData.name || "Building",
+      user: Number(process.env.PTERODACTYL_USER_ID) || 1, 
+      egg: Number(process.env.PTERODACTYL_EGG_ID) || 1,
+      docker_image: "quay.io/pterodactyl/core:java",
+      startup: "java -Xms128M -Xmx128M -jar server.jar",
       environment: {
-        SERVER_SCRIPT: "bot.js",
-        DISCORD_TOKEN: "{{DISCORD_TOKEN}}"
+        BUNGEE_VERSION: "latest",
+        SERVER_JARFILE: "server.jar"
       },
       limits: requestData.limits || {
-        memory: 512,
+        memory: 128,
         swap: 0,
-        disk: 1024,
+        disk: 512,
         io: 500,
         cpu: 100
       },
       feature_limits: requestData.feature_limits || {
-        databases: 0,
-        backups: 0,
-        allocations: 1
+        databases: 5,
+        backups: 1
       },
-      deploy: {
-        locations: [Number(process.env.PTERODACTYL_LOCATION_ID) || 1],
-        dedicated_ip: false,
-        port_range: []
-      },
-      start_on_completion: true,
-      skip_scripts: false,
-      oom_disabled: false,
-      description: requestData.description || 'Discord bot server',
-      nest: Number(process.env.PTERODACTYL_NEST_ID) || 5
+      allocation: {
+        default: 17
+      }
     };
 
     // Log outgoing request
     log('Outgoing Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`,
       method: 'POST',
       headers: {
         'Authorization': 'Bearer [REDACTED]',
@@ -267,7 +261,7 @@ const handler = async (event, context) => {
 
     // Make request to Pterodactyl API
     log('Making API Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`,
       method: 'POST'
     });
 
@@ -275,7 +269,7 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
+    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
@@ -421,5 +415,3 @@ const handler = async (event, context) => {
     };
   }
 };
-
-exports.handler = handler;
