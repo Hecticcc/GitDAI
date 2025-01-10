@@ -1,7 +1,5 @@
 const fetch = require('node-fetch');
 
-const handler = async (event, context) => {
-
 // Required environment variables
 const requiredEnvVars = {
   PTERODACTYL_API_URL: process.env.PTERODACTYL_API_URL,
@@ -50,6 +48,7 @@ function validateEnvironment(log) {
   
   return issues;
 }
+
 // Enhanced debug logging with timestamps and request IDs
 function createLogger() {
   const logs = [];
@@ -150,10 +149,7 @@ const handler = async (event, context) => {
     log('Environment Validation Failed', { issues: envIssues }, 'error');
     return {
       statusCode: 500,
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'application/json'
-      },
+      headers,
       body: JSON.stringify({
         error: 'Environment configuration issues detected',
         issues: envIssues,
@@ -182,25 +178,6 @@ const handler = async (event, context) => {
     // Parse and validate request body
     let requestData;
     
-    // Check for required environment variables
-    const missingVars = Object.entries(requiredEnvVars)
-      .filter(([_, value]) => !value)
-      .map(([key]) => key);
-    
-    if (missingVars.length > 0) {
-      log('Missing Environment Variables', missingVars, 'error');
-      return {
-        statusCode: 500,
-        headers,
-        body: JSON.stringify({
-          error: 'Missing required environment variables',
-          missing: missingVars,
-          requestId,
-          logs
-        })
-      };
-    }
-    
     try {
       requestData = JSON.parse(event.body || '{}');
       if (!requestData.name) {
@@ -222,29 +199,37 @@ const handler = async (event, context) => {
 
     // Prepare server creation payload
     const serverData = {
-      name: requestData.name || "Building",
-      user: Number(process.env.PTERODACTYL_USER_ID) || 1, 
-      egg: Number(process.env.PTERODACTYL_EGG_ID) || 1,
-      docker_image: "quay.io/pterodactyl/core:java",
-      startup: "java -Xms128M -Xmx128M -jar server.jar",
+      name: requestData.name,
+      user: Number(process.env.PTERODACTYL_USER_ID),
+      egg: Number(process.env.PTERODACTYL_EGG_ID),
+      docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
+      startup: "node {{SERVER_SCRIPT}}",
       environment: {
-        BUNGEE_VERSION: "latest",
-        SERVER_JARFILE: "server.jar"
+        SERVER_SCRIPT: "bot.js",
+        DISCORD_TOKEN: "{{DISCORD_TOKEN}}"
       },
       limits: requestData.limits || {
-        memory: 128,
+        memory: 512,
         swap: 0,
-        disk: 512,
+        disk: 1024,
         io: 500,
         cpu: 100
       },
       feature_limits: requestData.feature_limits || {
-        databases: 5,
-        backups: 1
+        databases: 0,
+        backups: 0,
+        allocations: 1
       },
-      allocation: {
-        default: 17
-      }
+      deploy: {
+        locations: [Number(process.env.PTERODACTYL_LOCATION_ID)],
+        dedicated_ip: false,
+        port_range: []
+      },
+      start_on_completion: true,
+      skip_scripts: false,
+      oom_disabled: false,
+      description: requestData.description || 'Discord bot server',
+      nest: Number(process.env.PTERODACTYL_NEST_ID)
     };
 
     // Log outgoing request
@@ -346,7 +331,7 @@ const handler = async (event, context) => {
         message: errorMessage,
         body: parsedResponse ? responseData : { error: 'Unparseable response' },
         rawResponse: responseText,
-        url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`
+        url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`
       };
       log('API Error Response', errorDetails, 'error');
       
