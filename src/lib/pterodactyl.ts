@@ -18,6 +18,7 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
   try {
     while (attempt <= maxAttempts) {
       try {
+        // Log the attempt
         debugLogger.log({
           stage: 'Checking Server Status',
           data: { serverId, attempt, maxAttempts },
@@ -29,13 +30,17 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-        const response = await fetch(`/.netlify/functions/server-status?serverId=${serverId}`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json'
-          },
-          signal: controller.signal
-        });
+        const response = await fetch(
+          `${process.env.PTERODACTYL_API_URL}/api/client/servers/${serverId}`,
+          {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
+              'Accept': 'application/json'
+            },
+            signal: controller.signal
+          }
+        );
 
         clearTimeout(timeout);
 
@@ -68,13 +73,17 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 
         debugLogger.log({
           stage: 'Server Status',
-          data: responseData,
+          data: {
+            status: responseData.attributes.status || 'unknown',
+            identifier: responseData.attributes.identifier
+          },
           level: 'info',
           source: 'pterodactyl-status',
           requestId
         });
 
-        return responseData.status;
+        // Return status from client API
+        return responseData.attributes.status || 'unknown';
       } catch (error) {
         if (error.name === 'AbortError') {
           throw new Error('Request timed out while checking server status');
@@ -122,18 +131,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
       if (status) lastKnownStatus = status;
       
       if (status === 'running') {
-        // Double check with deployment status
-        const deployStatus = await getDeploymentStatus({});
-        if (deployStatus === 'success') {
-          return;
-        }
-        // If deployment status isn't success, continue waiting
-        debugLogger.log({
-          stage: 'Deployment Status Check',
-          data: { status: deployStatus },
-          level: 'info',
-          source: 'pterodactyl-status'
-        });
+        return;
       } else if (status === 'error' || status === 'suspended') {
         throw new Error(`Server installation failed with status: ${status}`);
       }
@@ -153,7 +151,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
       consecutiveErrors++;
       
       // Only fail if we've exceeded max retries and last known status was not 'installing'
-      if (consecutiveErrors >= maxConsecutiveErrors && lastKnownStatus !== 'installing') {
+      if (consecutiveErrors >= maxConsecutiveErrors) {
         throw new Error(`Failed to check server status after ${consecutiveErrors} attempts: ${error.message}`);
       }
       

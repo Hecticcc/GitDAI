@@ -114,7 +114,7 @@ const handler = async (event, context) => {
         }
 
         log('Server Status Retrieved', {
-          status: responseData.attributes.status,
+          status: responseData.attributes.status || responseData.attributes.state,
           serverName: responseData.attributes.name,
           attempt
         });
@@ -123,7 +123,7 @@ const handler = async (event, context) => {
           statusCode: 200,
           headers,
           body: JSON.stringify({
-            status: responseData.attributes.status,
+            status: responseData.attributes.status || responseData.attributes.state || 'running',
             serverName: responseData.attributes.name,
             requestId,
             logs
