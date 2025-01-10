@@ -107,7 +107,8 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 export async function waitForInstallation(serverId: string): Promise<void> {
   const startTime = Date.now();
   let consecutiveErrors = 0;
-  let lastStatus = 'installing';
+  let lastKnownStatus = 'installing';
+  const maxConsecutiveErrors = 5; // Increase tolerance for temporary errors
   
   while (true) {
     if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
@@ -117,7 +118,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     try {
       const status = await checkServerStatus(serverId);
       consecutiveErrors = 0; // Reset error counter on successful check
-      lastStatus = status;
+      lastKnownStatus = status;
       
       if (status === 'running') {
         // Double check with deployment status
@@ -141,7 +142,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
         data: { 
           status,
           elapsedTime: Date.now() - startTime,
-          remainingTimeout: INSTALLATION_TIMEOUT - (Date.now() - startTime)
+          remainingTimeout: INSTALLATION_TIMEOUT - (Date.now() - startTime),
         },
         level: 'info',
         source: 'pterodactyl-status'
@@ -149,8 +150,8 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     } catch (error) {
       consecutiveErrors++;
       
-      // If we get 3 consecutive errors, fail the installation
-      if (consecutiveErrors >= 3) {
+      // If we get too many consecutive errors, fail the installation
+      if (consecutiveErrors >= maxConsecutiveErrors) {
         throw new Error(`Failed to check server status after ${consecutiveErrors} attempts: ${error.message}`);
       }
       
@@ -159,16 +160,16 @@ export async function waitForInstallation(serverId: string): Promise<void> {
         data: {
           error: error.message,
           consecutiveErrors,
-          willRetry: consecutiveErrors < 3,
-          lastKnownStatus: lastStatus
+          willRetry: consecutiveErrors < maxConsecutiveErrors,
+          lastKnownStatus
         },
         level: 'warn',
         source: 'pterodactyl-status'
       });
     }
     
-    // Adjust sleep time based on status
-    const sleepTime = lastStatus === 'installing' ? 
+    // Adjust sleep time based on status and errors
+    const sleepTime = (lastKnownStatus === 'installing' && consecutiveErrors === 0) ? 
       INSTALLATION_CHECK_INTERVAL / 2 : // Check more frequently during installation
       INSTALLATION_CHECK_INTERVAL;
       
