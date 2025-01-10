@@ -107,8 +107,9 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 export async function waitForInstallation(serverId: string): Promise<void> {
   const startTime = Date.now();
   let consecutiveErrors = 0;
-  let lastKnownStatus = 'installing';
-  const maxConsecutiveErrors = 5; // Increase tolerance for temporary errors
+  let lastKnownStatus = 'installing' as const;
+  const maxConsecutiveErrors = 10; // Increase tolerance for temporary network issues
+  const maxRetryDelay = 10000; // Maximum delay between retries (10 seconds)
   
   while (true) {
     if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
@@ -118,7 +119,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     try {
       const status = await checkServerStatus(serverId);
       consecutiveErrors = 0; // Reset error counter on successful check
-      lastKnownStatus = status;
+      if (status) lastKnownStatus = status;
       
       if (status === 'running') {
         // Double check with deployment status
@@ -143,6 +144,7 @@ export async function waitForInstallation(serverId: string): Promise<void> {
           status,
           elapsedTime: Date.now() - startTime,
           remainingTimeout: INSTALLATION_TIMEOUT - (Date.now() - startTime),
+          consecutiveErrors
         },
         level: 'info',
         source: 'pterodactyl-status'
@@ -150,8 +152,8 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     } catch (error) {
       consecutiveErrors++;
       
-      // If we get too many consecutive errors, fail the installation
-      if (consecutiveErrors >= maxConsecutiveErrors) {
+      // Only fail if we've exceeded max retries and last known status was not 'installing'
+      if (consecutiveErrors >= maxConsecutiveErrors && lastKnownStatus !== 'installing') {
         throw new Error(`Failed to check server status after ${consecutiveErrors} attempts: ${error.message}`);
       }
       
@@ -168,10 +170,14 @@ export async function waitForInstallation(serverId: string): Promise<void> {
       });
     }
     
-    // Adjust sleep time based on status and errors
-    const sleepTime = (lastKnownStatus === 'installing' && consecutiveErrors === 0) ? 
-      INSTALLATION_CHECK_INTERVAL / 2 : // Check more frequently during installation
-      INSTALLATION_CHECK_INTERVAL;
+    // Calculate exponential backoff delay with max limit
+    let sleepTime = INSTALLATION_CHECK_INTERVAL;
+    if (consecutiveErrors > 0) {
+      sleepTime = Math.min(
+        INSTALLATION_CHECK_INTERVAL * Math.pow(1.5, consecutiveErrors - 1),
+        maxRetryDelay
+      );
+    }
       
     await sleep(sleepTime);
   }
