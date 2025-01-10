@@ -244,7 +244,7 @@ export async function testCreateServer() {
     debugLogger.log({
       stage: 'Testing Server Creation',
       data: {
-        url: '/api/pterodactyl?test=true',
+        url: '/.netlify/functions/pterodactyl?test=true',
         method: 'POST'
       },
       level: 'info',
@@ -252,7 +252,7 @@ export async function testCreateServer() {
       requestId
     });
 
-    const response = await fetch('/api/pterodactyl?test=true', {
+    const response = await fetch('/.netlify/functions/pterodactyl?test=true', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
