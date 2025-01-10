@@ -218,12 +218,12 @@ const handler = async (event, context) => {
       feature_limits: requestData.feature_limits || {
         databases: 0,
         backups: 0,
-        allocations: 1
+        allocations: 0
       },
       deploy: {
         locations: [Number(process.env.PTERODACTYL_LOCATION_ID)],
         dedicated_ip: false,
-        port_range: []
+        port_range: ["25565-25665"]
       },
       start_on_completion: true,
       skip_scripts: false,
