@@ -201,7 +201,7 @@ const handler = async (event, context) => {
     const serverData = {
       name: requestData.name,
       user: Number(process.env.PTERODACTYL_USER_ID),
-      egg: Number(process.env.PTERODACTYL_EGG_ID),
+      egg: 15, // Node.js Generic egg ID
       docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
       startup: "node {{SERVER_SCRIPT}}",
       environment: {
@@ -218,18 +218,18 @@ const handler = async (event, context) => {
       feature_limits: requestData.feature_limits || {
         databases: 0,
         backups: 0,
-        allocations: 0
+        allocations: 1
       },
       deploy: {
         locations: [Number(process.env.PTERODACTYL_LOCATION_ID)],
         dedicated_ip: false,
-        port_range: ["25565-25665"]
+        port_range: []
       },
       start_on_completion: true,
       skip_scripts: false,
       oom_disabled: false,
       description: requestData.description || 'Discord bot server',
-      nest: Number(process.env.PTERODACTYL_NEST_ID)
+      nest: 5 // Node.js nest ID
     };
 
     // Log outgoing request
@@ -246,7 +246,7 @@ const handler = async (event, context) => {
 
     // Make request to Pterodactyl API
     log('Making API Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`,
       method: 'POST'
     });
 
@@ -254,7 +254,7 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
+    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
