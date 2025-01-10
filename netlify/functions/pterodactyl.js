@@ -1,4 +1,25 @@
-const fetch = require('node-fetch');
+// Enhanced debug logging with timestamps and request IDs
+function createLogger() {
+  const logs = [];
+  const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+  return {
+    logs,
+    requestId,
+    log: (stage, data, level = 'info') => {
+      const entry = {
+        timestamp: new Date().toISOString(),
+        requestId,
+        stage,
+        level,
+        data: typeof data === 'object' ? JSON.stringify(data) : data
+      };
+      logs.push(entry);
+      console.log(`[${entry.timestamp}] [${level.toUpperCase()}] [${requestId}] ${stage}:`, data);
+      return entry;
+    }
+  };
+}
 
 // Required environment variables
 const requiredEnvVars = {
@@ -49,29 +70,6 @@ function validateEnvironment(log) {
   return issues;
 }
 
-// Enhanced debug logging with timestamps and request IDs
-function createLogger() {
-  const logs = [];
-  const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-
-  return {
-    logs,
-    requestId,
-    log: (stage, data, level = 'info') => {
-      const entry = {
-        timestamp: new Date().toISOString(),
-        requestId,
-        stage,
-        level,
-        data: typeof data === 'object' ? JSON.stringify(data) : data
-      };
-      logs.push(entry);
-      console.log(`[${entry.timestamp}] [${level.toUpperCase()}] [${requestId}] ${stage}:`, data);
-      return entry;
-    }
-  };
-}
-
 const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
@@ -90,94 +88,96 @@ const handler = async (event, context) => {
     'X-Request-ID': requestId
   };
 
-  // Handle preflight requests first
-  if (event.httpMethod === 'OPTIONS') {
-    log('Handling CORS Preflight', {
-      method: event.httpMethod,
-      headers: event.headers
-    }, 'info');
-
-    return {
-      statusCode: 204,
-      headers: corsHeaders,
-      body: ''
-    };
-  }
-
-  // Handle test requests
-  const isTest = event.queryStringParameters?.test === 'true' || 
-                 (event.body && JSON.parse(event.body)?.isTest === true);
-  
-  if (isTest) {
-    log('Test Request Received', { 
-      isTest,
-      method: event.httpMethod,
-      headers: event.headers,
-      queryParams: event.queryStringParameters
-    }, 'info');
-
-    return {
-      statusCode: 200,
-      headers,
-      body: JSON.stringify({
-        success: true,
-        message: 'Test endpoint is working',
-        attributes: {
-          id: 'test-' + Date.now(),
-          name: 'Test Server',
-          description: 'Test server response'
-        }, 
-        requestId,
-        logs
-      })
-    };
-  }
-
-  // Log all environment variables (redacted)
-  log('Environment Variables', {
-    PTERODACTYL_API_URL: requiredEnvVars.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
-    PTERODACTYL_API_KEY: requiredEnvVars.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]',
-    PTERODACTYL_USER_ID: requiredEnvVars.PTERODACTYL_USER_ID ? '[SET]' : '[NOT SET]',
-    PTERODACTYL_EGG_ID: requiredEnvVars.PTERODACTYL_EGG_ID ? '[SET]' : '[NOT SET]',
-    PTERODACTYL_NEST_ID: requiredEnvVars.PTERODACTYL_NEST_ID ? '[SET]' : '[NOT SET]',
-    PTERODACTYL_LOCATION_ID: requiredEnvVars.PTERODACTYL_LOCATION_ID ? '[SET]' : '[NOT SET]'
-  }, 'info');
-
-  // Validate environment first
-  const envIssues = validateEnvironment(log);
-  if (envIssues.length > 0) {
-    log('Environment Validation Failed', { issues: envIssues }, 'error');
-    return {
-      statusCode: 500,
-      headers,
-      body: JSON.stringify({
-        error: 'Environment configuration issues detected',
-        issues: envIssues,
-        requestId,
-        logs
-      })
-    };
-  }
-
-  // Validate request method
-  if (event.httpMethod !== 'POST') {
-    log('Method Not Allowed', event.httpMethod, 'error');
-    return {
-      statusCode: 405,
-      headers,
-      body: JSON.stringify({
-        error: 'Method not allowed',
-        allowedMethods: ['POST'],
-        requestId,
-        logs
-      })
-    };
-  }
-
   try {
+    // Dynamically import node-fetch
+    const { default: fetch } = await import('node-fetch');
+
+    // Handle preflight requests first
+    if (event.httpMethod === 'OPTIONS') {
+      log('Handling CORS Preflight', {
+        method: event.httpMethod,
+        headers: event.headers
+      }, 'info');
+
+      return {
+        statusCode: 204,
+        headers: corsHeaders,
+        body: ''
+      };
+    }
+
+    // Handle test requests
+    const isTest = event.queryStringParameters?.test === 'true' || 
+                   (event.body && JSON.parse(event.body)?.isTest === true);
+    
+    if (isTest) {
+      log('Test Request Received', { 
+        isTest,
+        method: event.httpMethod,
+        headers: event.headers,
+        queryParams: event.queryStringParameters
+      }, 'info');
+
+      return {
+        statusCode: 200,
+        headers,
+        body: JSON.stringify({
+          success: true,
+          message: 'Test endpoint is working',
+          attributes: {
+            id: 'test-' + Date.now(),
+            name: 'Test Server',
+            description: 'Test server response'
+          }, 
+          requestId,
+          logs
+        })
+      };
+    }
+
+    // Log all environment variables (redacted)
+    log('Environment Variables', {
+      PTERODACTYL_API_URL: requiredEnvVars.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_API_KEY: requiredEnvVars.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_USER_ID: requiredEnvVars.PTERODACTYL_USER_ID ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_EGG_ID: requiredEnvVars.PTERODACTYL_EGG_ID ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_NEST_ID: requiredEnvVars.PTERODACTYL_NEST_ID ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_LOCATION_ID: requiredEnvVars.PTERODACTYL_LOCATION_ID ? '[SET]' : '[NOT SET]'
+    }, 'info');
+
+    // Validate environment first
+    const envIssues = validateEnvironment(log);
+    if (envIssues.length > 0) {
+      log('Environment Validation Failed', { issues: envIssues }, 'error');
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Environment configuration issues detected',
+          issues: envIssues,
+          requestId,
+          logs
+        })
+      };
+    }
+
+    // Validate request method
+    if (event.httpMethod !== 'POST') {
+      log('Method Not Allowed', event.httpMethod, 'error');
+      return {
+        statusCode: 405,
+        headers,
+        body: JSON.stringify({
+          error: 'Method not allowed',
+          allowedMethods: ['POST'],
+          requestId,
+          logs
+        })
+      };
+    }
+
     // Parse and validate request body
     let requestData;
-    
     try {
       requestData = JSON.parse(event.body || '{}');
       if (!requestData.name) {
@@ -401,4 +401,4 @@ const handler = async (event, context) => {
   }
 };
 
-exports.handler = handler;
+export { handler };
