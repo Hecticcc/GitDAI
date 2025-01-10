@@ -14,21 +14,25 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
   debugLogger.startRequest(requestId);
   let attempt = 1;
   const maxAttempts = 3;
+  const baseDelay = 1000; // Base delay of 1 second
 
   try {
     while (attempt <= maxAttempts) {
       try {
+        // Calculate exponential backoff delay
+        const delay = Math.min(baseDelay * Math.pow(2, attempt - 1), 5000);
+
         // Log the attempt
         debugLogger.log({
           stage: 'Checking Server Status',
-          data: { serverId, attempt, maxAttempts },
+          data: { serverId, attempt, maxAttempts, delay },
           level: 'info',
           source: 'pterodactyl-status',
           requestId
         });
 
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+        const timeout = setTimeout(() => controller.abort(), 15000); // Increase timeout to 15 seconds
 
         // Use Netlify function to proxy the request
         const response = await fetch(
@@ -36,7 +40,8 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
           {
             method: 'GET',
             headers: {
-              'Accept': 'application/json'
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
             },
             signal: controller.signal
           }
@@ -44,27 +49,38 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 
         clearTimeout(timeout);
 
-        // If we get a 502, retry
-        if (response.status === 502 && attempt < maxAttempts) {
+        // If we get a retriable status code, retry
+        if ((response.status === 502 || response.status === 503 || response.status === 504) && attempt < maxAttempts) {
           debugLogger.log({
-            stage: 'Retrying after 502',
-            data: { attempt, delay: attempt * 1000 },
+            stage: 'Retrying after error',
+            data: { 
+              attempt,
+              delay,
+              status: response.status,
+              statusText: response.statusText
+            },
             level: 'warn',
             source: 'pterodactyl-status',
             requestId
           });
-          await sleep(attempt * 1000); // Exponential backoff
+          await sleep(delay);
           attempt++;
           continue;
         }
 
         const responseText = await response.text();
+        
+        // Check if we got an HTML error page
+        if (responseText.includes('<!DOCTYPE html>')) {
+          throw new Error('Received HTML error page instead of JSON response');
+        }
+
         let responseData;
 
         try {
           responseData = JSON.parse(responseText);
         } catch (error) {
-          throw new Error(`Failed to parse response: ${responseText}`);
+          throw new Error(`Failed to parse response: ${responseText.substring(0, 100)}...`);
         }
 
         if (!response.ok) {
