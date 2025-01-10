@@ -234,7 +234,7 @@ const handler = async (event, context) => {
 
     // Log outgoing request
     log('Outgoing Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`,
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
       method: 'POST',
       headers: {
         'Authorization': 'Bearer [REDACTED]',
@@ -246,7 +246,7 @@ const handler = async (event, context) => {
 
     // Make request to Pterodactyl API
     log('Making API Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`,
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
       method: 'POST'
     });
 
@@ -254,7 +254,7 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/api/application/servers`, {
+    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
