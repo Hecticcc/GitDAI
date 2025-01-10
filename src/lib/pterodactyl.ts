@@ -12,38 +12,81 @@ async function sleep(ms: number) {
 export async function checkServerStatus(serverId: string): Promise<'installing' | 'running' | 'suspended' | 'error'> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+  let attempt = 1;
+  const maxAttempts = 3;
 
   try {
-    debugLogger.log({
-      stage: 'Checking Server Status',
-      data: { serverId },
-      level: 'info',
-      source: 'pterodactyl-status',
-      requestId
-    });
+    while (attempt <= maxAttempts) {
+      try {
+        debugLogger.log({
+          stage: 'Checking Server Status',
+          data: { serverId, attempt, maxAttempts },
+          level: 'info',
+          source: 'pterodactyl-status',
+          requestId
+        });
 
-    const response = await fetch(`/.netlify/functions/server-status?serverId=${serverId}`, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        const response = await fetch(`/.netlify/functions/server-status?serverId=${serverId}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json'
+          },
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        // If we get a 502, retry
+        if (response.status === 502 && attempt < maxAttempts) {
+          debugLogger.log({
+            stage: 'Retrying after 502',
+            data: { attempt, delay: attempt * 1000 },
+            level: 'warn',
+            source: 'pterodactyl-status',
+            requestId
+          });
+          await sleep(attempt * 1000); // Exponential backoff
+          attempt++;
+          continue;
+        }
+
+        const responseText = await response.text();
+        let responseData;
+
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (error) {
+          throw new Error(`Failed to parse response: ${responseText}`);
+        }
+
+        if (!response.ok) {
+          throw new Error(responseData.error || 'Failed to check server status');
+        }
+
+        debugLogger.log({
+          stage: 'Server Status',
+          data: responseData,
+          level: 'info',
+          source: 'pterodactyl-status',
+          requestId
+        });
+
+        return responseData.status;
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out while checking server status');
+        }
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+        attempt++;
+        await sleep(1000 * attempt);
       }
-    });
-
-    const responseData = await response.json();
-
-    if (!response.ok) {
-      throw new Error(responseData.error || 'Failed to check server status');
     }
-
-    debugLogger.log({
-      stage: 'Server Status',
-      data: responseData,
-      level: 'info',
-      source: 'pterodactyl-status',
-      requestId
-    });
-
-    return responseData.status;
+    throw new Error('Maximum retry attempts reached');
   } catch (error) {
     debugLogger.log({
       stage: 'Status Check Failed',
@@ -63,18 +106,40 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 
 export async function waitForInstallation(serverId: string): Promise<void> {
   const startTime = Date.now();
+  let consecutiveErrors = 0;
   
   while (true) {
     if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
       throw new Error('Server installation timed out after 5 minutes');
     }
 
-    const status = await checkServerStatus(serverId);
-    
-    if (status === 'running') {
-      return;
-    } else if (status === 'error' || status === 'suspended') {
-      throw new Error(`Server installation failed with status: ${status}`);
+    try {
+      const status = await checkServerStatus(serverId);
+      consecutiveErrors = 0; // Reset error counter on successful check
+      
+      if (status === 'running') {
+        return;
+      } else if (status === 'error' || status === 'suspended') {
+        throw new Error(`Server installation failed with status: ${status}`);
+      }
+    } catch (error) {
+      consecutiveErrors++;
+      
+      // If we get 3 consecutive errors, fail the installation
+      if (consecutiveErrors >= 3) {
+        throw new Error(`Failed to check server status after ${consecutiveErrors} attempts: ${error.message}`);
+      }
+      
+      debugLogger.log({
+        stage: 'Installation Status Check Failed',
+        data: {
+          error: error.message,
+          consecutiveErrors,
+          willRetry: consecutiveErrors < 3
+        },
+        level: 'warn',
+        source: 'pterodactyl-status'
+      });
     }
     
     await sleep(INSTALLATION_CHECK_INTERVAL);
