@@ -74,21 +74,50 @@ function createLogger() {
 const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
+
+  // Always return proper CORS headers for all responses
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Max-Age': '86400',
+  };
   
+  const headers = {
+    ...corsHeaders,
+    'Content-Type': 'application/json',
+    'X-Request-ID': requestId
+  };
+
+  // Handle preflight requests first
+  if (event.httpMethod === 'OPTIONS') {
+    log('Handling CORS Preflight', {
+      method: event.httpMethod,
+      headers: event.headers
+    }, 'info');
+
+    return {
+      statusCode: 204,
+      headers: corsHeaders,
+      body: ''
+    };
+  }
+
   // Handle test requests
   const isTest = event.queryStringParameters?.test === 'true' || 
                  (event.body && JSON.parse(event.body)?.isTest === true);
   
   if (isTest) {
-    log('Test Request Received', { isTest }, 'info');
+    log('Test Request Received', { 
+      isTest,
+      method: event.httpMethod,
+      headers: event.headers,
+      queryParams: event.queryStringParameters
+    }, 'info');
+
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type'
-      },
+      headers,
       body: JSON.stringify({
         success: true,
         message: 'Test endpoint is working',
@@ -96,7 +125,7 @@ const handler = async (event, context) => {
           id: 'test-' + Date.now(),
           name: 'Test Server',
           description: 'Test server response'
-        },
+        }, 
         requestId,
         logs
       })
@@ -120,8 +149,8 @@ const handler = async (event, context) => {
     return {
       statusCode: 500,
       headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*'
+        ...corsHeaders,
+        'Content-Type': 'application/json'
       },
       body: JSON.stringify({
         error: 'Environment configuration issues detected',
@@ -129,25 +158,6 @@ const handler = async (event, context) => {
         requestId,
         logs
       })
-    };
-  }
-
-  // Enhanced CORS headers
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Max-Age': '86400',
-    'Content-Type': 'application/json',
-    'X-Request-ID': requestId
-  };
-
-  // Handle preflight
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: ''
     };
   }
 
