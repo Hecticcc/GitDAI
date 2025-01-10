@@ -29,7 +29,7 @@ const handler = async (event, context) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Content-Type': 'application/json',
     'X-Request-ID': requestId
   };
@@ -66,7 +66,7 @@ const handler = async (event, context) => {
     while (attempt <= maxAttempts) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
+        const timeout = setTimeout(() => controller.abort(), 15000); // Increase timeout to 15 seconds
 
         const response = await fetch(
           `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
@@ -74,13 +74,23 @@ const handler = async (event, context) => {
             method: 'GET',
             headers: {
               'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
-              'Accept': 'application/json'
+              'Accept': 'application/json',
+              'Cache-Control': 'no-cache'
             },
             signal: controller.signal
           }
         );
 
         clearTimeout(timeout);
+        
+        // If we get a 502, retry with exponential backoff
+        if (response.status === 502 && attempt < maxAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+          log('Retrying after 502', { attempt, delay }, 'warn');
+          await new Promise(resolve => setTimeout(resolve, delay));
+          attempt++;
+          continue;
+        }
 
         // If we get a 502, retry with exponential backoff
         if (response.status === 502 && attempt < maxAttempts) {
@@ -92,12 +102,17 @@ const handler = async (event, context) => {
         }
 
         const responseText = await response.text();
+        
+        // Check if we got an HTML error page
+        if (responseText.includes('<!DOCTYPE html>')) {
+          throw new Error('Received HTML error page instead of JSON response');
+        }
         let responseData;
 
         try {
           responseData = JSON.parse(responseText);
         } catch (error) {
-          throw new Error(`Failed to parse response: ${responseText}`);
+          throw new Error(`Failed to parse response: ${responseText.substring(0, 100)}...`);
         }
 
         if (!response.ok) {
