@@ -137,6 +137,15 @@ export async function createPterodactylServer(name: string, description?: string
 
     let responseData;
     try {
+      responseData = JSON.parse(responseText);
+      debugLogger.log({
+        stage: 'Parsed Response',
+        data: responseData,
+        level: 'info',
+        source: 'pterodactyl',
+        requestId
+      });
+    } catch (error) {
       const truncatedResponse = responseText.length > 1000 
         ? `${responseText.substring(0, 1000)}...` 
         : responseText;
@@ -156,8 +165,6 @@ export async function createPterodactylServer(name: string, description?: string
         source: 'pterodactyl',
         requestId
       });
-      responseData = JSON.parse(responseText);
-    } catch (error) {
       throw new Error('Failed to parse server response. The server may be misconfigured or experiencing issues.');
     }
     debugLogger.log({
