@@ -75,6 +75,34 @@ const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
   
+  // Handle test requests
+  const isTest = event.queryStringParameters?.test === 'true' || 
+                 (event.body && JSON.parse(event.body)?.isTest === true);
+  
+  if (isTest) {
+    log('Test Request Received', { isTest }, 'info');
+    return {
+      statusCode: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+      },
+      body: JSON.stringify({
+        success: true,
+        message: 'Test endpoint is working',
+        attributes: {
+          id: 'test-' + Date.now(),
+          name: 'Test Server',
+          description: 'Test server response'
+        },
+        requestId,
+        logs
+      })
+    };
+  }
+
   // Log all environment variables (redacted)
   log('Environment Variables', {
     PTERODACTYL_API_URL: requiredEnvVars.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
@@ -229,7 +257,7 @@ const handler = async (event, context) => {
 
     // Make request to Pterodactyl API
     log('Making API Request', {
-      url: 'https://cp.discordai.net/api/application/servers',
+      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
       method: 'POST'
     });
 
@@ -237,7 +265,7 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch('https://cp.discordai.net/api/application/servers', {
+    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,

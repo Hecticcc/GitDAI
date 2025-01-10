@@ -24,7 +24,7 @@ export async function createPterodactylServer(name: string, description?: string
     debugLogger.log({
       stage: 'Preparing Request',
       data: {
-        url: 'https://cp.discordai.net/api/application/servers',
+        url: '/.netlify/functions/pterodactyl',
         method: 'POST',
         body: requestBody
       },
@@ -50,7 +50,7 @@ export async function createPterodactylServer(name: string, description?: string
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-        response = await fetch('https://cp.discordai.net/api/application/servers', {
+        response = await fetch('/.netlify/functions/pterodactyl', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -244,7 +244,7 @@ export async function testCreateServer() {
     debugLogger.log({
       stage: 'Testing Server Creation',
       data: {
-        url: '/.netlify/functions/pterodactyl',
+        url: '/.netlify/functions/pterodactyl?test=true',
         method: 'POST'
       },
       level: 'info',
@@ -252,7 +252,7 @@ export async function testCreateServer() {
       requestId
     });
 
-    const response = await fetch('/.netlify/functions/pterodactyl', {
+    const response = await fetch('/.netlify/functions/pterodactyl?test=true', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
