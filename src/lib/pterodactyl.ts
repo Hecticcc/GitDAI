@@ -2,11 +2,84 @@ import { debugLogger } from './debug';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
+const INSTALLATION_CHECK_INTERVAL = 5000; // 5 seconds
+const INSTALLATION_TIMEOUT = 300000; // 5 minutes
 
 async function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+export async function checkServerStatus(serverId: string): Promise<'installing' | 'running' | 'suspended' | 'error'> {
+  const requestId = crypto.randomUUID();
+  debugLogger.startRequest(requestId);
+
+  try {
+    debugLogger.log({
+      stage: 'Checking Server Status',
+      data: { serverId },
+      level: 'info',
+      source: 'pterodactyl-status',
+      requestId
+    });
+
+    const response = await fetch(`/.netlify/functions/server-status?serverId=${serverId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+
+    const responseData = await response.json();
+
+    if (!response.ok) {
+      throw new Error(responseData.error || 'Failed to check server status');
+    }
+
+    debugLogger.log({
+      stage: 'Server Status',
+      data: responseData,
+      level: 'info',
+      source: 'pterodactyl-status',
+      requestId
+    });
+
+    return responseData.status;
+  } catch (error) {
+    debugLogger.log({
+      stage: 'Status Check Failed',
+      data: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      },
+      level: 'error',
+      source: 'pterodactyl-status',
+      requestId
+    });
+    throw error;
+  } finally {
+    debugLogger.endRequest(requestId);
+  }
+}
+
+export async function waitForInstallation(serverId: string): Promise<void> {
+  const startTime = Date.now();
+  
+  while (true) {
+    if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
+      throw new Error('Server installation timed out after 5 minutes');
+    }
+
+    const status = await checkServerStatus(serverId);
+    
+    if (status === 'running') {
+      return;
+    } else if (status === 'error' || status === 'suspended') {
+      throw new Error(`Server installation failed with status: ${status}`);
+    }
+    
+    await sleep(INSTALLATION_CHECK_INTERVAL);
+  }
+}
 export async function createPterodactylServer(name: string, description?: string) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
@@ -246,6 +319,8 @@ export async function createPterodactylServer(name: string, description?: string
 export async function uploadFiles(serverId: string, files: Array<{ path: string, content: string }>) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+  let attempt = 1;
+  const maxAttempts = 3;
 
   try {
     debugLogger.log({
@@ -259,33 +334,58 @@ export async function uploadFiles(serverId: string, files: Array<{ path: string,
       source: 'pterodactyl-upload',
       requestId
     });
+    
+    while (attempt <= maxAttempts) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000);
 
-    const response = await fetch('/.netlify/functions/upload-files', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        serverId,
-        files
-      })
-    });
+        const response = await fetch('/.netlify/functions/upload-files', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            serverId,
+            files
+          }),
+          signal: controller.signal
+        });
 
-    const responseData = await response.json();
+        clearTimeout(timeout);
 
-    if (!response.ok) {
-      throw new Error(responseData.error || 'Failed to upload files');
+        const responseText = await response.text();
+        let responseData;
+
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (error) {
+          throw new Error(`Failed to parse response: ${responseText}`);
+        }
+
+        if (!response.ok) {
+          if (response.status === 502 && attempt < maxAttempts) {
+            await sleep(attempt * 1000);
+            attempt++;
+            continue;
+          }
+          throw new Error(responseData.error || 'Failed to upload files');
+        }
+
+        return responseData;
+      } catch (error) {
+        if (error.name === 'AbortError') {
+          throw new Error('Request timed out while uploading files');
+        }
+        if (attempt === maxAttempts) {
+          throw error;
+        }
+        attempt++;
+        await sleep(1000 * attempt);
+      }
     }
-
-    debugLogger.log({
-      stage: 'Upload Complete',
-      data: responseData,
-      level: 'info',
-      source: 'pterodactyl-upload',
-      requestId
-    });
-
-    return responseData;
+    throw new Error('Maximum retry attempts reached');
   } catch (error) {
     debugLogger.log({
       stage: 'Upload Failed',

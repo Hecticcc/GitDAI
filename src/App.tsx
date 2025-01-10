@@ -2,7 +2,7 @@ import React from 'react';
 import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType } from './lib/openai';
-import { createPterodactylServer, testCreateServer } from './lib/pterodactyl';
+import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
 import { SolutionMessage } from './components/SolutionMessage';
@@ -399,6 +399,18 @@ ${messages
                           serverName,
                           'Discord bot server created via Bot Builder'
                         );
+                        
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: 'Server created successfully. Waiting for installation to complete...'
+                        }]);
+
+                        await waitForInstallation(server.data.attributes.identifier);
+                        
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: 'Server installation complete. Uploading bot files...'
+                        }]);
 
                         // Upload bot files
                         const files = [
