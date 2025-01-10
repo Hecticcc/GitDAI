@@ -201,7 +201,7 @@ const handler = async (event, context) => {
     const serverData = {
       name: requestData.name,
       user: Number(process.env.PTERODACTYL_USER_ID),
-      egg: 15, // Node.js Generic egg ID
+      egg: Number(process.env.PTERODACTYL_EGG_ID),
       docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
       startup: "node {{SERVER_SCRIPT}}",
       environment: {
@@ -229,7 +229,7 @@ const handler = async (event, context) => {
       skip_scripts: false,
       oom_disabled: false,
       description: requestData.description || 'Discord bot server',
-      nest: 5 // Node.js nest ID
+      nest: Number(process.env.PTERODACTYL_NEST_ID)
     };
 
     // Log outgoing request
