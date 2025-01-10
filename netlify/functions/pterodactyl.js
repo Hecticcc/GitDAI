@@ -229,7 +229,7 @@ const handler = async (event, context) => {
 
     // Make request to Pterodactyl API
     log('Making API Request', {
-      url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`,
+      url: 'https://cp.discordai.net/api/application/servers',
       method: 'POST'
     });
 
@@ -237,7 +237,7 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
+    const response = await fetch('https://cp.discordai.net/api/application/servers', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,

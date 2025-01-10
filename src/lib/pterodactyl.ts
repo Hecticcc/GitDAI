@@ -1,5 +1,12 @@
 import { debugLogger } from './debug';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second
+
+async function sleep(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export async function createPterodactylServer(name: string, description?: string) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
@@ -17,7 +24,7 @@ export async function createPterodactylServer(name: string, description?: string
     debugLogger.log({
       stage: 'Preparing Request',
       data: {
-        url: '/.netlify/functions/pterodactyl/application/servers',
+        url: 'https://cp.discordai.net/api/application/servers',
         method: 'POST',
         body: requestBody
       },
@@ -26,14 +33,72 @@ export async function createPterodactylServer(name: string, description?: string
       requestId
     });
 
-    const response = await fetch('/.netlify/functions/pterodactyl/application/servers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: requestBody
-    });
+    let response;
+    let lastError;
+    
+    // Implement retry logic
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        debugLogger.log({
+          stage: 'Making Request',
+          data: { attempt, maxAttempts: MAX_RETRIES },
+          level: 'info',
+          source: 'pterodactyl',
+          requestId
+        });
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+        response = await fetch('https://cp.discordai.net/api/application/servers', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: requestBody,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeout);
+
+        // If we get a successful response or a non-retriable error, break the loop
+        if (response.ok || ![502, 503, 504].includes(response.status)) {
+          break;
+        }
+
+        lastError = new Error(`Server returned ${response.status} status`);
+      } catch (error) {
+        lastError = error;
+        debugLogger.log({
+          stage: 'Request Attempt Failed',
+          data: {
+            attempt,
+            error: error instanceof Error ? error.message : 'Unknown error'
+          },
+          level: 'warn',
+          source: 'pterodactyl',
+          requestId
+        });
+      }
+
+      // If this wasn't our last attempt, wait before retrying
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY * attempt;
+        debugLogger.log({
+          stage: 'Retrying Request',
+          data: { attempt, delay },
+          level: 'info',
+          source: 'pterodactyl',
+          requestId
+        });
+        await sleep(delay);
+      }
+    }
+
+    if (!response) {
+      throw lastError || new Error('Failed to connect to Pterodactyl API after multiple attempts');
+    }
 
     let responseText;
     try {
@@ -113,21 +178,36 @@ export async function createPterodactylServer(name: string, description?: string
       const errorData = responseData?.error || responseData?.message || responseData;
       const errorMessage = typeof errorData === 'string' ? errorData : JSON.stringify(errorData);
       
+      // Enhanced error context based on status code
+      let contextMessage = '';
+      if (response.status === 502) {
+        contextMessage = ' (Bad Gateway - The server is temporarily unavailable)';
+      } else if (response.status === 503) {
+        contextMessage = ' (Service Unavailable - The server is temporarily overloaded)';
+      } else if (response.status === 504) {
+        contextMessage = ' (Gateway Timeout - The server took too long to respond)';
+      } else if (response.status === 500) {
+        contextMessage = ' (Internal Server Error)';
+      } else if (response.status === 401) {
+        contextMessage = ' (Authentication failed - Please check your API credentials)';
+      } else if (response.status === 422) {
+        contextMessage = ' (Invalid configuration - Please check your server settings)';
+      }
+
       debugLogger.log({
         stage: 'API Error',
-        data: { error: errorMessage, response: responseData },
+        data: { 
+          error: errorMessage,
+          response: responseData,
+          context: contextMessage
+        },
         statusCode: response.status,
         level: 'error',
         source: 'pterodactyl',
         requestId
       });
       
-      // Provide more context based on status code
-      const statusContext = response.status === 500 ? ' (Server error)' :
-                          response.status === 401 ? ' (Authentication failed)' :
-                          response.status === 422 ? ' (Invalid configuration)' : '';
-                          
-      throw new Error(`${errorMessage}${statusContext}`);
+      throw new Error(`${errorMessage}${contextMessage}`);
     }
 
     debugLogger.log({
@@ -164,7 +244,7 @@ export async function testCreateServer() {
     debugLogger.log({
       stage: 'Testing Server Creation',
       data: {
-        url: '/.netlify/functions/pterodactyl/application/servers',
+        url: 'https://cp.discordai.net/api/application/servers',
         method: 'POST'
       },
       level: 'info',
@@ -172,16 +252,18 @@ export async function testCreateServer() {
       requestId
     });
 
-    const response = await fetch('/.netlify/functions/pterodactyl/application/servers', {
+    const response = await fetch('https://cp.discordai.net/api/application/servers', {
       method: 'POST',
       headers: {
+        'Authorization': 'Bearer ptlc_3Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5Hs5',
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
       body: JSON.stringify({
         name: `test-bot-${Date.now()}`,
-        user: 1,
-        egg: 15,
+        user: 2,
+        egg: 16,
+        nest: 5,
         docker_image: 'ghcr.io/pterodactyl/yolks:nodejs_18',
         startup: 'node {{SERVER_SCRIPT}}',
         limits: {
@@ -192,13 +274,23 @@ export async function testCreateServer() {
           cpu: 100
         },
         feature_limits: {
-          databases: 1,
+          databases: 0,
+          backups: 0,
           allocations: 1
+        },
+        deploy: {
+          locations: [1],
+          dedicated_ip: false,
+          port_range: []
         },
         environment: {
           SERVER_SCRIPT: 'bot.js',
           DISCORD_TOKEN: '{{DISCORD_TOKEN}}'
-        }
+        },
+        start_on_completion: true,
+        skip_scripts: false,
+        oom_disabled: false,
+        description: 'Test Discord bot server'
       })
     });
 
