@@ -201,7 +201,7 @@ const handler = async (event, context) => {
     const serverData = {
       name: requestData.name,
       user: Number(process.env.PTERODACTYL_USER_ID),
-      egg: Number(process.env.PTERODACTYL_EGG_ID),
+      egg: 16,
       docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
       startup: "node {{SERVER_SCRIPT}}",
       environment: {
