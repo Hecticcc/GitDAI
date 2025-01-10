@@ -1,6 +1,6 @@
-import fetch from 'node-fetch';
+const fetch = require('node-fetch');
 
-export const handler = async (event, context) => {
+const handler = async (event, context) => {
 
 // Required environment variables
 const requiredEnvVars = {
@@ -415,3 +415,5 @@ const handler = async (event, context) => {
     };
   }
 };
+
+exports.handler = handler;
