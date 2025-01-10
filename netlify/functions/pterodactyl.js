@@ -206,7 +206,9 @@ const handler = async (event, context) => {
       startup: "node {{SERVER_SCRIPT}}",
       environment: {
         SERVER_SCRIPT: "bot.js",
-        DISCORD_TOKEN: "{{DISCORD_TOKEN}}"
+        DISCORD_TOKEN: "{{DISCORD_TOKEN}}",
+        STARTUP_FILE: "bot.js",
+        REPO_URL: "https://github.com/discordjs/guide"
       },
       limits: requestData.limits || {
         memory: 512,
