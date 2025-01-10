@@ -2,7 +2,7 @@ import React from 'react';
 import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType } from './lib/openai';
-import { deployToRailway, getRailwayDeploymentStatus } from './lib/railway';
+import { createPterodactylServer, testCreateServer } from './lib/pterodactyl';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
 import { SolutionMessage } from './components/SolutionMessage';
@@ -36,7 +36,7 @@ const formatMessages = (messages: ChatMessage[]) =>
 
 function App() {
   const [messages, setMessages] = React.useState<ChatMessage[]>([
-    { type: 'system', content: 'Welcome! I can help you create a Discord bot. What features would you like to add?' }
+    { type: 'system', content: 'Welcome! I can help you create a Discord bot. The current bot has a Tic-tac-toe game command. What would you like to add?' }
   ]);
   const [input, setInput] = React.useState('');
   const [currentCode, setCurrentCode] = React.useState(DEFAULT_CODE);
@@ -53,43 +53,9 @@ function App() {
   const [botToken, setBotToken] = React.useState('');
   const [isTokenSaved, setIsTokenSaved] = React.useState(false);
   const [showTokenInput, setShowTokenInput] = React.useState(false);
-  const [isDeploying, setIsDeploying] = React.useState(false);
-  const [deploymentId, setDeploymentId] = React.useState<string | null>(null);
-  const [deploymentStatus, setDeploymentStatus] = React.useState<'BUILDING' | 'DEPLOYING' | 'SUCCESS' | 'FAILED' | null>(null);
-  const [deploymentUrl, setDeploymentUrl] = React.useState<string | null>(null);
+  const [isCreatingServer, setIsCreatingServer] = React.useState(false);
   const chatRef = React.useRef<HTMLDivElement>(null);
 
-  // Poll deployment status
-  React.useEffect(() => {
-    if (!deploymentId || !isDeploying) return;
-
-    const pollStatus = async () => {
-      try {
-        const status = await getRailwayDeploymentStatus(deploymentId, {
-          projectId: import.meta.env.VITE_RAILWAY_PROJECT_ID,
-          environmentId: import.meta.env.VITE_RAILWAY_ENVIRONMENT_ID,
-          serviceId: import.meta.env.VITE_RAILWAY_SERVICE_ID,
-          apiToken: import.meta.env.VITE_RAILWAY_API_TOKEN
-        });
-
-        setDeploymentStatus(status.status);
-        if (status.url) {
-          setDeploymentUrl(status.url);
-        }
-
-        if (status.status === 'SUCCESS' || status.status === 'FAILED') {
-          setIsDeploying(false);
-        }
-      } catch (error) {
-        console.error('Failed to get deployment status:', error);
-        setIsDeploying(false);
-        setDeploymentStatus('FAILED');
-      }
-    };
-
-    const interval = setInterval(pollStatus, 5000);
-    return () => clearInterval(interval);
-  }, [deploymentId, isDeploying]);
   React.useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
@@ -184,28 +150,6 @@ function App() {
     }]);
   };
 
-  // Validate environment variables on component mount
-  React.useEffect(() => {
-    const requiredEnvVars = {
-      'OpenAI API Key': import.meta.env.VITE_OPENAI_API_KEY,
-      'Railway Project ID': import.meta.env.VITE_RAILWAY_PROJECT_ID,
-      'Railway Environment ID': import.meta.env.VITE_RAILWAY_ENVIRONMENT_ID,
-      'Railway Service ID': import.meta.env.VITE_RAILWAY_SERVICE_ID,
-      'Railway API Token': import.meta.env.VITE_RAILWAY_API_TOKEN
-    };
-
-    const missingVars = Object.entries(requiredEnvVars)
-      .filter(([_, value]) => !value)
-      .map(([name]) => name);
-
-    if (missingVars.length > 0) {
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: `Error: Missing required environment variables:\n${missingVars.join('\n')}\n\nPlease ensure all environment variables are set.`,
-        isSolution: true
-      }]);
-    }
-  }, []);
   const handleDownload = () => {
     const zip = new JSZip();
     
@@ -344,9 +288,9 @@ ${messages
       )}
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto p-4 flex flex-col lg:flex-row gap-6 h-[calc(100vh-4rem)]">
+      <main className="max-w-[95%] mx-auto p-4 flex flex-col lg:flex-row gap-6 h-[calc(100vh-4rem)]">
         {/* Chat Interface */}
-        <div className="w-full lg:w-[450px] flex flex-col bg-[#36393F] rounded-lg overflow-hidden">
+        <div className="w-full lg:w-[35%] flex flex-col bg-[#36393F] rounded-lg overflow-hidden">
           <div 
             ref={chatRef}
             className="flex-1 overflow-y-auto p-4 space-y-4"
@@ -445,51 +389,67 @@ ${messages
                         setShowTokenInput(true);
                         return;
                       }
-                      
-                      if (isDeploying) return;
-                      
+
+                      if (isCreatingServer) return;
+
                       try {
-                        setIsDeploying(true);
-                        const id = await deployToRailway(currentCode, botToken, {
-                          projectId: import.meta.env.VITE_RAILWAY_PROJECT_ID,
-                          environmentId: import.meta.env.VITE_RAILWAY_ENVIRONMENT_ID,
-                          serviceId: import.meta.env.VITE_RAILWAY_SERVICE_ID,
-                          apiToken: import.meta.env.VITE_RAILWAY_API_TOKEN
-                        });
-                        setDeploymentId(id);
+                        setIsCreatingServer(true);
+                        const serverName = `discord-bot-${Date.now()}`;
+                        const server = await createPterodactylServer(
+                          serverName,
+                          'Discord bot server created via Bot Builder'
+                        );
                         setMessages(prev => [...prev, {
                           type: 'system',
-                          content: 'Starting test deployment on Railway...'
+                          content: `Successfully created Pterodactyl server!\nServer ID: ${server.identifier}\nName: ${server.name}`
                         }]);
                       } catch (error) {
-                        setIsDeploying(false);
                         setMessages(prev => [...prev, {
                           type: 'system',
-                          content: 'Failed to start deployment. Please check your Railway configuration.',
+                          content: `Failed to create Pterodactyl server: ${error instanceof Error ? error.message : 'Unknown error'}`,
                           isSolution: true
                         }]);
+                      } finally {
+                        setIsCreatingServer(false);
                       }
                     }}
-                    disabled={isDeploying}
+                    disabled={isCreatingServer}
                     className={`group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 bg-[#2F3136] ${
-                      isDeploying
+                      isCreatingServer
                         ? 'text-yellow-300'
                         : !botToken
                         ? 'text-gray-400 hover:bg-[#40444B]'
                         : 'text-gray-300 hover:bg-[#40444B]'
                     }`}
                   >
-                    <Rocket className={`w-4 h-4 ${isDeploying ? 'animate-pulse' : ''}`} />
-                    <span>{isDeploying ? 'Deploying...' : 'Test Deploy'}</span>
-                    {deploymentStatus && (
-                      <span className={`ml-2 px-2 py-0.5 text-xs rounded-full ${
-                        deploymentStatus === 'SUCCESS' ? 'bg-emerald-500/20 text-emerald-300' :
-                        deploymentStatus === 'FAILED' ? 'bg-red-500/20 text-red-300' :
-                        'bg-yellow-500/20 text-yellow-300'
-                      }`}>
-                        {deploymentStatus}
-                      </span>
-                    )}
+                    <Rocket className={`w-4 h-4 ${isCreatingServer ? 'animate-pulse' : ''}`} />
+                    <span>{isCreatingServer ? 'Creating Server...' : 'Deploy to Pterodactyl'}</span>
+                  </button>
+                  <button
+                    onClick={async () => {
+                      try {
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: 'Testing direct server creation...'
+                        }]);
+                        
+                        const result = await testCreateServer();
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: `Test server created successfully!\nServer ID: ${result.attributes?.id || 'unknown'}`
+                        }]);
+                      } catch (error) {
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: `Test server creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                          isSolution: true
+                        }]);
+                      }
+                    }}
+                    className="group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 bg-[#2F3136] text-gray-300 hover:bg-[#40444B]"
+                  >
+                    <Rocket className="w-4 h-4" />
+                    <span>Test Server</span>
                   </button>
                 </div>
                 <button
@@ -548,7 +508,7 @@ ${messages
         </div>
 
         {/* Preview Panel */}
-        <div className="flex-1 bg-[#36393F] rounded-lg p-4 hidden lg:flex lg:flex-col min-w-0">
+        <div className="flex-1 bg-[#36393F] rounded-lg p-6 hidden lg:flex lg:flex-col min-w-0">
           <div className="flex items-center space-x-2 mb-4">
             <MessageCircle className="w-5 h-5 text-[#7289DA]" />
             <h2 className="text-lg font-semibold">Bot Preview</h2>
@@ -558,10 +518,6 @@ ${messages
           </div>
         </div>
       </main>
-      {/* Version Badge */}
-      <div className="fixed bottom-4 right-4 px-2 py-1 text-xs font-medium bg-[#2F3136] text-[#7289DA] rounded-full border border-[#7289DA]/20 shadow-lg backdrop-blur-sm">
-        v0.8.1
-      </div>
     </div>
   );
 }

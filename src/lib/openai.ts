@@ -4,6 +4,9 @@ export type ModelType = 'gpt-3.5-turbo' | 'gpt-4';
 
 const SYSTEM_PROMPT = `You are an expert Discord bot developer. Help users create Discord bots by generating clean, secure JavaScript code using discord.js v14+.
 
+Current Features:
+- Tic-tac-toe game (!tictactoe @opponent)
+
 CRITICAL: When responding to user requests:
 1. ABSOLUTELY CRITICAL Code Preservation Rules:
    - ALWAYS analyze the current code in user messages
@@ -89,12 +92,8 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
     debug({ stage: 'Request Messages', data: messages });
 
     // Validate API key
-    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error('OpenAI API key not found in environment variables');
-    }
-    if (!apiKey.startsWith('sk-')) {
-      throw new Error('Invalid OpenAI API key format');
+    if (!import.meta.env.VITE_OPENAI_API_KEY?.startsWith('sk-')) {
+      throw new Error('Invalid API key format');
     }
 
     const requestBody = {
@@ -115,7 +114,7 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`,
       },
       body: JSON.stringify(requestBody),
     });

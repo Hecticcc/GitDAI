@@ -59,7 +59,7 @@ export function AnimatedCode({ code, isLoading }: AnimatedCodeProps) {
       <div className="relative">
         <pre
           ref={codeRef}
-          className="text-sm text-gray-300 overflow-auto p-6 h-[calc(100vh-20rem)] font-mono"
+          className="text-sm text-gray-300 overflow-auto p-6 h-[calc(100vh-16rem)] font-mono"
         >
           <code className="language-javascript block" />
         </pre>
