@@ -107,6 +107,7 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
 export async function waitForInstallation(serverId: string): Promise<void> {
   const startTime = Date.now();
   let consecutiveErrors = 0;
+  let lastStatus = 'installing';
   
   while (true) {
     if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
@@ -116,12 +117,35 @@ export async function waitForInstallation(serverId: string): Promise<void> {
     try {
       const status = await checkServerStatus(serverId);
       consecutiveErrors = 0; // Reset error counter on successful check
+      lastStatus = status;
       
       if (status === 'running') {
-        return;
+        // Double check with deployment status
+        const deployStatus = await getDeploymentStatus({});
+        if (deployStatus === 'success') {
+          return;
+        }
+        // If deployment status isn't success, continue waiting
+        debugLogger.log({
+          stage: 'Deployment Status Check',
+          data: { status: deployStatus },
+          level: 'info',
+          source: 'pterodactyl-status'
+        });
       } else if (status === 'error' || status === 'suspended') {
         throw new Error(`Server installation failed with status: ${status}`);
       }
+
+      debugLogger.log({
+        stage: 'Installation Progress',
+        data: { 
+          status,
+          elapsedTime: Date.now() - startTime,
+          remainingTimeout: INSTALLATION_TIMEOUT - (Date.now() - startTime)
+        },
+        level: 'info',
+        source: 'pterodactyl-status'
+      });
     } catch (error) {
       consecutiveErrors++;
       
@@ -135,16 +159,23 @@ export async function waitForInstallation(serverId: string): Promise<void> {
         data: {
           error: error.message,
           consecutiveErrors,
-          willRetry: consecutiveErrors < 3
+          willRetry: consecutiveErrors < 3,
+          lastKnownStatus: lastStatus
         },
         level: 'warn',
         source: 'pterodactyl-status'
       });
     }
     
-    await sleep(INSTALLATION_CHECK_INTERVAL);
+    // Adjust sleep time based on status
+    const sleepTime = lastStatus === 'installing' ? 
+      INSTALLATION_CHECK_INTERVAL / 2 : // Check more frequently during installation
+      INSTALLATION_CHECK_INTERVAL;
+      
+    await sleep(sleepTime);
   }
 }
+
 export async function createPterodactylServer(name: string, description?: string) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
@@ -305,6 +336,7 @@ export async function createPterodactylServer(name: string, description?: string
       });
       throw new Error('Failed to parse server response. The server may be misconfigured or experiencing issues.');
     }
+
     debugLogger.log({
       stage: 'Received Response',
       data: {
@@ -381,92 +413,6 @@ export async function createPterodactylServer(name: string, description?: string
   }
 }
 
-export async function uploadFiles(serverId: string, files: Array<{ path: string, content: string }>) {
-  const requestId = crypto.randomUUID();
-  debugLogger.startRequest(requestId);
-  let attempt = 1;
-  const maxAttempts = 3;
-
-  try {
-    debugLogger.log({
-      stage: 'Uploading Files',
-      data: {
-        serverId,
-        fileCount: files.length,
-        files: files.map(f => f.path)
-      },
-      level: 'info',
-      source: 'pterodactyl-upload',
-      requestId
-    });
-    
-    while (attempt <= maxAttempts) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000);
-
-        const response = await fetch('/.netlify/functions/upload-files', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            serverId,
-            files
-          }),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeout);
-
-        const responseText = await response.text();
-        let responseData;
-
-        try {
-          responseData = JSON.parse(responseText);
-        } catch (error) {
-          throw new Error(`Failed to parse response: ${responseText}`);
-        }
-
-        if (!response.ok) {
-          if (response.status === 502 && attempt < maxAttempts) {
-            await sleep(attempt * 1000);
-            attempt++;
-            continue;
-          }
-          throw new Error(responseData.error || 'Failed to upload files');
-        }
-
-        return responseData;
-      } catch (error) {
-        if (error.name === 'AbortError') {
-          throw new Error('Request timed out while uploading files');
-        }
-        if (attempt === maxAttempts) {
-          throw error;
-        }
-        attempt++;
-        await sleep(1000 * attempt);
-      }
-    }
-    throw new Error('Maximum retry attempts reached');
-  } catch (error) {
-    debugLogger.log({
-      stage: 'Upload Failed',
-      data: {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined
-      },
-      level: 'error',
-      source: 'pterodactyl-upload',
-      requestId
-    });
-    throw error;
-  } finally {
-    debugLogger.endRequest(requestId);
-  }
-}
 export async function testCreateServer() {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
