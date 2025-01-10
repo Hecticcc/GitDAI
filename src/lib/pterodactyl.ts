@@ -30,13 +30,12 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-        // Use application API endpoint for more detailed status information
+        // Use Netlify function to proxy the request
         const response = await fetch(
-          `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
+          `/.netlify/functions/server-status?serverId=${serverId}`,
           {
             method: 'GET',
             headers: {
-              'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
               'Accept': 'application/json'
             },
             signal: controller.signal
