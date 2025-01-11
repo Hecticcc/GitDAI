@@ -137,12 +137,17 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       
-      log('Preparing File Upload', {
-        fileRequestId,
-        path,
-        contentLength: content.length,
-        contentPreview: content.substring(0, 100) + '...'
-      });
+      // Extract actual content if it's a JSON string
+      let fileContent = content;
+      try {
+        const parsed = JSON.parse(content);
+        if (parsed.content) {
+          fileContent = parsed.content;
+        }
+      } catch (e) {
+        // Content is not JSON, use as is
+        fileContent = content;
+      }
 
       // Ensure clean URL construction
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '').replace(/\/api$/, '');
@@ -169,7 +174,7 @@ const handler = async (event, context) => {
 
         const requestBody = {
           file: path,
-          content: content
+          content: fileContent
         };
 
         log('Request Body', {
