@@ -84,18 +84,14 @@ const handler = async (event, context) => {
         clearTimeout(timeout);
         
         // If we get a 502, retry with exponential backoff
-        if (response.status === 502 && attempt < maxAttempts) {
+        if ((response.status === 502 || response.status === 504) && attempt < maxAttempts) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          log('Retrying after 502', { attempt, delay }, 'warn');
-          await new Promise(resolve => setTimeout(resolve, delay));
-          attempt++;
-          continue;
-        }
-
-        // If we get a 502, retry with exponential backoff
-        if (response.status === 502 && attempt < maxAttempts) {
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-          log('Retrying after 502', { attempt, delay }, 'warn');
+          log('Retrying after gateway error', { 
+            status: response.status,
+            attempt, 
+            delay,
+            remainingAttempts: maxAttempts - attempt
+          }, 'warn');
           await new Promise(resolve => setTimeout(resolve, delay));
           attempt++;
           continue;
@@ -105,23 +101,42 @@ const handler = async (event, context) => {
         
         // Check if we got an HTML error page
         if (responseText.includes('<!DOCTYPE html>')) {
-          throw new Error('Received HTML error page instead of JSON response');
+          const statusCode = response.status;
+          const errorMessage = `Received HTML error page instead of JSON response (Status: ${statusCode})`;
+          log('HTML Error Page', {
+            status: statusCode,
+            attempt,
+            responsePreview: responseText.substring(0, 200)
+          }, 'error');
+          throw new Error(errorMessage);
         }
         let responseData;
 
         try {
           responseData = JSON.parse(responseText);
         } catch (error) {
-          throw new Error(`Failed to parse response: ${responseText.substring(0, 100)}...`);
+          const preview = responseText.substring(0, 100);
+          log('Parse Error', {
+            error: error.message,
+            preview,
+            attempt
+          }, 'error');
+          throw new Error(`Failed to parse response: ${preview}...`);
         }
 
         if (!response.ok) {
-          log('API Error', responseData, 'error');
+          log('API Error Response', {
+            status: response.status,
+            error: responseData.error || 'Unknown error',
+            attempt
+          }, 'error');
           return {
             statusCode: response.status,
             headers,
             body: JSON.stringify({
               error: responseData.error || 'Failed to check server status',
+              status: response.status,
+              attempt,
               requestId,
               logs
             })
