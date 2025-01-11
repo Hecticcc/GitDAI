@@ -230,14 +230,15 @@ const formatMessages = (messages: ChatMessage[]) =>
 export function updateBotToken(code: string, token: string): string {
   // If code doesn't exist yet, use default code with the token
   if (!code || code === DEFAULT_CODE) {
-    return DEFAULT_CODE.replace('TOKEN_HERE', token);
+    return DEFAULT_CODE.replace(/['"]TOKEN_HERE['"]/, `'${token}'`);
   }
 
   // Look for existing token in different formats
   const tokenPatterns = [
     /const TOKEN\s*=\s*['"]([^'"]*)['"]/,
     /client\.login\(['"]([^'"]*)['"]\)/,
-    /token:\s*['"]([^'"]*)['"]/
+    /token:\s*['"]([^'"]*)['"]/,
+    /['"]TOKEN_HERE['"]/
   ];
 
   let updatedCode = code;
@@ -255,11 +256,14 @@ export function updateBotToken(code: string, token: string): string {
   // If no token was found, add it before client.login()
   if (!tokenFound) {
     if (updatedCode.includes('client.login')) {
-      // Add token before login
-      updatedCode = updatedCode.replace(
-        /client\.login\([^)]*\)/,
-        `const TOKEN = '${token}';\n\nclient.login(TOKEN)`
-      );
+      // Check if we need to add the token declaration
+      if (!updatedCode.includes('const TOKEN')) {
+        // Add token before login
+        updatedCode = updatedCode.replace(
+          /client\.login\([^)]*\)/,
+          `const TOKEN = '${token}';\n\nclient.login(TOKEN)`
+        );
+      }
     } else {
       // Add token and login at the end
       updatedCode = `${updatedCode.trim()}\n\nconst TOKEN = '${token}';\nclient.login(TOKEN);\n`;

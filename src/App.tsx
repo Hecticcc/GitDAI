@@ -74,14 +74,16 @@ function App() {
       const codeBlock = extractCodeBlock(response);
       
       if (codeBlock) {
+        // Apply bot token to the new code if available
+        const codeWithToken = botToken ? updateBotToken(codeBlock, botToken) : codeBlock;
         const newVersion: CodeVersion = {
-          code: codeBlock,
+          code: codeWithToken,
           timestamp: new Date(),
           description: input.slice(0, 50) + (input.length > 50 ? '...' : '')
         };
         setCodeHistory(prev => [...prev.slice(0, historyIndex + 1), newVersion]);
         setHistoryIndex(prev => prev + 1);
-        setCurrentCode(codeBlock);
+        setCurrentCode(codeWithToken);
         // Only show the explanation part before the code block
         const explanation = response.split('```')[0].trim(); 
         if (explanation.toLowerCase().startsWith('error:') || explanation.toLowerCase().startsWith('error detected:')) {
