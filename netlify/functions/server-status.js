@@ -25,6 +25,37 @@ function createLogger() {
 const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
+  
+  // Enhanced request validation and logging
+  const validateAndLogRequest = () => {
+    const { serverId } = event.queryStringParameters || {};
+    
+    log('Request Details', {
+      method: event.httpMethod,
+      path: event.path,
+      queryParams: event.queryStringParameters,
+      headers: {
+        ...event.headers,
+        authorization: '[REDACTED]'
+      },
+      envVars: {
+        apiUrl: process.env.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
+        apiKey: process.env.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]'
+      }
+    });
+
+    if (!serverId) {
+      throw new Error('Server ID is required');
+    }
+
+    // Validate server ID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(serverId)) {
+      throw new Error('Invalid server ID format. Expected full UUID.');
+    }
+
+    return serverId;
+  };
 
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -46,38 +77,58 @@ const handler = async (event, context) => {
     };
   }
 
+  let serverId;
   try {
-    // Dynamically import node-fetch
-    const { default: fetch } = await import('node-fetch');
+    serverId = validateAndLogRequest();
+  } catch (error) {
+    log('Validation Error', {
+      error: error.message,
+      requestParams: event.queryStringParameters
+    }, 'error');
 
-    let attempt = 1;
-    const maxAttempts = 3;
-    let lastError;
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({
+        error: error.message,
+        requestId,
+        logs
+      })
+    };
+  }
 
-    const { serverId } = event.queryStringParameters;
+  // Dynamically import node-fetch
+  const { default: fetch } = await import('node-fetch');
 
-    if (!serverId) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'Server ID is required',
-          requestId,
-          logs
-        })
-      };
-    }
+  let attempt = 1;
+  const maxAttempts = 3;
+  let lastError;
 
-    log('Checking Server Status', { serverId });
+  log('Checking Server Status', { 
+    serverId,
+    apiUrl: `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
+    attempt: 1,
+    maxAttempts
+  });
 
-    while (attempt <= maxAttempts) {
+  while (attempt <= maxAttempts) {
       try {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000); // Increase timeout to 15 seconds
 
+        const apiUrl = `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`;
+        log('Making API Request', {
+          url: apiUrl,
+          attempt,
+          headers: {
+            'User-Agent': 'DiscordAI-Status-Check/1.0',
+            'Accept': 'application/json',
+            'Authorization': '[REDACTED]'
+          }
+        });
+
         // Use the server ID for the API request - Pterodactyl API should handle both short and full IDs
-        const response = await fetch(
-          `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
+        const response = await fetch(apiUrl,
           {
             method: 'GET',
             headers: {
@@ -97,6 +148,13 @@ const handler = async (event, context) => {
 
         clearTimeout(timeout);
         
+        log('Response Headers', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers),
+          attempt
+        });
+
         // If we get a 502, retry with exponential backoff
         if ((response.status === 502 || response.status === 504 || response.status === 522 || response.status === 524) && attempt < maxAttempts) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
