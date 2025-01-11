@@ -19,9 +19,8 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
   try {
     while (attempt <= maxAttempts) {
       try {
-        // Ensure we have the full server ID
-        if (!serverId.includes('-')) {
-          throw new Error('Invalid server ID format. Expected full UUID.');
+        if (!serverId) {
+          throw new Error('Server ID is required');
         }
 
         // Calculate exponential backoff delay

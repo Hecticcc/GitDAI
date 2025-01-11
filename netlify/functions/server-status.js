@@ -56,13 +56,12 @@ const handler = async (event, context) => {
 
     const { serverId } = event.queryStringParameters;
 
-    // Validate server ID format (should be a UUID)
-    if (!serverId || !serverId.includes('-')) {
+    if (!serverId) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: 'Invalid server ID format. Expected full UUID.',
+          error: 'Server ID is required',
           requestId,
           logs
         })
@@ -76,6 +75,7 @@ const handler = async (event, context) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000); // Increase timeout to 15 seconds
 
+        // Use the server ID for the API request - Pterodactyl API should handle both short and full IDs
         const response = await fetch(
           `${process.env.PTERODACTYL_API_URL}/api/client/servers/${serverId}/resources`,
           {

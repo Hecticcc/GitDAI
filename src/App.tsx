@@ -405,7 +405,14 @@ ${messages
                           content: 'Server created successfully. Waiting for installation to complete...'
                         }]);
 
-                        await waitForInstallation(server.data.attributes.identifier);
+                        // Extract full UUID from the server response
+                        const fullServerId = server.data.attributes.uuid || server.data.attributes.identifier;
+                        
+                        if (!fullServerId) {
+                          throw new Error('Server ID not found in response');
+                        }
+
+                        await waitForInstallation(fullServerId);
                         
                         setMessages(prev => [...prev, {
                           type: 'system',
