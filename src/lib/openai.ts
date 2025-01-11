@@ -202,3 +202,69 @@ export function generatePackageJson(): string {
     }
   }, null, 2);
 }
+
+const DEFAULT_CODE = `// Your bot code will appear here
+const Discord = require('discord.js');
+const client = new Discord.Client();
+
+// Bot token setup
+const TOKEN = 'TOKEN_HERE';
+
+client.on('ready', () => {
+  console.log('Bot is ready!');
+});
+
+client.login(TOKEN);
+`;
+
+export function getDefaultCode(): string {
+  return DEFAULT_CODE;
+}
+
+const formatMessages = (messages: ChatMessage[]) => 
+  messages.map(msg => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
+export function updateBotToken(code: string, token: string): string {
+  // If code doesn't exist yet, use default code with the token
+  if (!code || code === DEFAULT_CODE) {
+    return DEFAULT_CODE.replace('TOKEN_HERE', token);
+  }
+
+  // Look for existing token in different formats
+  const tokenPatterns = [
+    /const TOKEN\s*=\s*['"]([^'"]*)['"]/,
+    /client\.login\(['"]([^'"]*)['"]\)/,
+    /token:\s*['"]([^'"]*)['"]/
+  ];
+
+  let updatedCode = code;
+  let tokenFound = false;
+
+  // Try to replace existing token
+  for (const pattern of tokenPatterns) {
+    if (pattern.test(updatedCode)) {
+      updatedCode = updatedCode.replace(pattern, (match) => 
+        match.replace(/['"]([^'"]*)['"]/g, `'${token}'`));
+      tokenFound = true;
+    }
+  }
+
+  // If no token was found, add it before client.login()
+  if (!tokenFound) {
+    if (updatedCode.includes('client.login')) {
+      // Add token before login
+      updatedCode = updatedCode.replace(
+        /client\.login\([^)]*\)/,
+        `const TOKEN = '${token}';\n\nclient.login(TOKEN)`
+      );
+    } else {
+      // Add token and login at the end
+      updatedCode = `${updatedCode.trim()}\n\nconst TOKEN = '${token}';\nclient.login(TOKEN);\n`;
+    }
+  }
+
+  return updatedCode;
+}

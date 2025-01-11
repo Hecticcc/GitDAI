@@ -5,7 +5,7 @@ import 'prismjs/components/prism-clike.js';
 import 'prismjs/components/prism-javascript.js';
 import 'prismjs/themes/prism-tomorrow.css';
 import { LoadingDots } from './LoadingDots';
-import { DEFAULT_CODE } from '../App';
+import { getDefaultCode } from '../lib/openai';
 import { Terminal } from 'lucide-react';
 
 interface AnimatedCodeProps {
@@ -39,7 +39,7 @@ export function AnimatedCode({ code, isLoading }: AnimatedCodeProps) {
     if (codeRef.current) {
       const codeElement = codeRef.current.querySelector('code');
       if (codeElement) {
-        codeElement.textContent = code || DEFAULT_CODE;
+        codeElement.textContent = code || getDefaultCode();
         Prism.highlightElement(codeElement);
       }
     }

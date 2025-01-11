@@ -1,7 +1,7 @@
 import React from 'react';
 import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket } from 'lucide-react';
-import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType } from './lib/openai';
+import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
 import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
@@ -19,15 +19,6 @@ interface CodeVersion {
   description: string;
 }
 
-export const DEFAULT_CODE = `// Your bot code will appear here
-const Discord = require('discord.js');
-const client = new Discord.Client();
-
-client.on('ready', () => {
-  console.log('Bot is ready!');
-});
-`;
-
 const formatMessages = (messages: ChatMessage[]) => 
   messages.map(msg => ({
     role: msg.type === 'user' ? 'user' : 'assistant',
@@ -39,9 +30,11 @@ function App() {
     { type: 'system', content: 'Welcome! I can help you create a Discord bot. The current bot has a Tic-tac-toe game command. What would you like to add?' }
   ]);
   const [input, setInput] = React.useState('');
-  const [currentCode, setCurrentCode] = React.useState(DEFAULT_CODE);
+  const [currentCode, setCurrentCode] = React.useState(() => {
+    return getDefaultCode();
+  });
   const [codeHistory, setCodeHistory] = React.useState<CodeVersion[]>([{
-    code: DEFAULT_CODE,
+    code: getDefaultCode(),
     timestamp: new Date(),
     description: 'Basic bot setup'
   }]);
@@ -148,6 +141,24 @@ function App() {
       type: 'system',
       content: `Switched to version from ${version.timestamp.toLocaleString()}: ${version.description}`
     }]);
+  };
+
+  const handleTokenSave = () => {
+    if (botToken.trim()) {
+      setIsTokenSaved(true);
+      // Update the code with the new token
+      const updatedCode = updateBotToken(currentCode, botToken);
+      setCurrentCode(updatedCode);
+      // Add new version to history
+      const newVersion: CodeVersion = {
+        code: updatedCode,
+        timestamp: new Date(),
+        description: 'Updated bot token'
+      };
+      setCodeHistory(prev => [...prev.slice(0, historyIndex + 1), newVersion]);
+      setHistoryIndex(prev => prev + 1);
+      setShowTokenInput(false);
+    }
   };
 
   const handleDownload = () => {
@@ -543,12 +554,7 @@ ${messages
                     />
                     <button
                       type="button"
-                      onClick={() => {
-                        if (botToken.trim()) {
-                          setIsTokenSaved(true);
-                          setShowTokenInput(false);
-                        }
-                      }}
+                      onClick={handleTokenSave}
                       disabled={!botToken.trim()}
                       className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
                         botToken.trim()
