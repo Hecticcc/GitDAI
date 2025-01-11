@@ -1,5 +1,4 @@
-const fetch = require('node-fetch');
-
+// We'll use dynamic import for node-fetch
 function createLogger() {
   const logs = [];
   const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
@@ -54,6 +53,11 @@ const handler = async (event, context) => {
       };
     }
 
+    // Validate environment variables
+    if (!process.env.PTERODACTYL_API_URL || !process.env.PTERODACTYL_API_KEY) {
+      throw new Error('Missing required environment variables');
+    }
+
     const { serverId, files } = JSON.parse(event.body);
 
     if (!serverId || !files || !Array.isArray(files)) {
@@ -71,28 +75,44 @@ const handler = async (event, context) => {
       fileCount: files.length
     });
 
+    // Import node-fetch dynamically
+    const { default: fetch } = await import('node-fetch');
+
     const uploadPromises = files.map(async file => {
       const { path, content } = file;
       
-      const response = await fetch(
-        `${process.env.PTERODACTYL_API_URL}/api/client/servers/${serverId}/files/write`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            path,
-            content: Buffer.from(content).toString('base64')
-          })
-        }
-      );
+      // Ensure clean URL construction
+      const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
+      
+      log('Making API Request', {
+        url: apiUrl,
+        path,
+        contentLength: content.length
+      });
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          path,
+          raw: content // Send raw content instead of base64
+        })
+      });
+
+      const responseText = await response.text();
+      log('Raw Response', {
+        status: response.status,
+        headers: Object.fromEntries(response.headers),
+        body: responseText
+      });
 
       if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Failed to upload ${path}: ${error}`);
+        throw new Error(`Failed to upload ${path}: ${responseText}`);
       }
 
       return { path, success: true };
