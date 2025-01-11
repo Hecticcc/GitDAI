@@ -138,7 +138,7 @@ const handler = async (event, context) => {
       
       // Ensure clean URL construction
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/api/application/servers/${serverId}/files/write`;
+      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
       
       log('Uploading File', {
         fileRequestId,
