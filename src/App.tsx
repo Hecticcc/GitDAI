@@ -408,11 +408,11 @@ ${messages
                         
                         setMessages(prev => [...prev, {
                           type: 'system',
-                          content: `Server created successfully. Waiting 60 seconds for installation...`
+                          content: `Server created successfully. Waiting 90 seconds for installation...`
                         }]);
 
-                        // Wait 60 seconds for server to initialize
-                        await new Promise(resolve => setTimeout(resolve, 60000));
+                        // Wait 90 seconds for server to initialize
+                        await new Promise(resolve => setTimeout(resolve, 90000));
                         
                         setMessages(prev => [...prev, {
                           type: 'system',
