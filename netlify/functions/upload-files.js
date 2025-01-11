@@ -137,17 +137,30 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       
-      // Extract actual content if it's a JSON string
-      let fileContent = content;
-      try {
-        const parsed = JSON.parse(content);
-        if (parsed.content) {
-          fileContent = parsed.content;
+      // Clean up the content
+      let fileContent = typeof content === 'string' ? content : JSON.stringify(content);
+      
+      // If content is a JSON string containing a content property, extract it
+      if (fileContent.startsWith('{') && fileContent.includes('"content"')) {
+        try {
+          const parsed = JSON.parse(fileContent);
+          if (parsed.content) {
+            fileContent = parsed.content;
+          }
+        } catch (e) {
+          // If parsing fails, use original content
+          log('Content Parse Warning', {
+            error: e.message,
+            willUseOriginal: true
+          }, 'warn');
         }
-      } catch (e) {
-        // Content is not JSON, use as is
-        fileContent = content;
       }
+      
+      // Remove any JSON formatting artifacts
+      fileContent = fileContent.replace(/\\n/g, '\n')
+                              .replace(/\\"/g, '"')
+                              .replace(/\\t/g, '\t')
+                              .replace(/\\\\/g, '\\');
 
       // Ensure clean URL construction
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '').replace(/\/api$/, '');
