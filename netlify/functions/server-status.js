@@ -77,7 +77,7 @@ const handler = async (event, context) => {
 
         // Use the server ID for the API request - Pterodactyl API should handle both short and full IDs
         const response = await fetch(
-          `${process.env.PTERODACTYL_API_URL}/api/client/servers/${serverId}/resources`,
+          `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`,
           {
             method: 'GET',
             headers: {
@@ -162,9 +162,9 @@ const handler = async (event, context) => {
         }
 
         log('Server Status Retrieved', {
-          currentState: responseData.attributes.current_state,
-          isSuspended: responseData.attributes.is_suspended,
-          resources: responseData.attributes.resources,
+          status: responseData.attributes.status,
+          state: responseData.attributes.state,
+          installed: responseData.attributes.container?.installed,
           attempt
         });
 
@@ -172,9 +172,9 @@ const handler = async (event, context) => {
           statusCode: 200,
           headers,
           body: JSON.stringify({
-            status: responseData.attributes.current_state,
-            isSuspended: responseData.attributes.is_suspended,
-            resources: responseData.attributes.resources,
+            status: responseData.attributes.status,
+            state: responseData.attributes.state,
+            installed: responseData.attributes.container?.installed,
             requestId,
             logs
           })
