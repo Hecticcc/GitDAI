@@ -400,19 +400,19 @@ ${messages
                           'Discord bot server created via Bot Builder'
                         );
                         
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: 'Server created successfully. Waiting for installation to complete...'
-                        }]);
-
-                        // Extract full UUID from the server response
-                        const fullServerId = server.data.attributes.uuid || server.data.attributes.identifier;
+                        const serverId = server.data.attributes.uuid || server.data.attributes.identifier;
                         
-                        if (!fullServerId) {
+                        if (!serverId) {
                           throw new Error('Server ID not found in response');
                         }
+                        
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: `Server created successfully. Waiting 60 seconds for installation...`
+                        }]);
 
-                        await waitForInstallation(fullServerId);
+                        // Wait 60 seconds for server to initialize
+                        await new Promise(resolve => setTimeout(resolve, 60000));
                         
                         setMessages(prev => [...prev, {
                           type: 'system',
@@ -430,13 +430,37 @@ ${messages
                             content: generatePackageJson()
                           }
                         ];
+                        
+                        try {
+                          const response = await fetch('/.netlify/functions/upload-files', {
+                            method: 'POST',
+                            headers: {
+                              'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                              serverId,
+                              files
+                            })
+                          });
 
-                        await uploadFiles(server.data.attributes.identifier, files);
+                          if (!response.ok) {
+                            const error = await response.json();
+                            throw new Error(error.error || 'Failed to upload files');
+                          }
+                          
+                          const result = await response.json();
+                          
+                          if (!result.success) {
+                            throw new Error('File upload failed');
+                          }
 
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: `Successfully created and configured Pterodactyl server!\nServer ID: ${server.data.attributes.identifier}\nName: ${server.data.attributes.name}\nFiles uploaded: bot.js, package.json`
-                        }]);
+                          setMessages(prev => [...prev, {
+                            type: 'system',
+                            content: `Successfully created and configured Pterodactyl server!\nServer ID: ${serverId}\nName: ${server.data.attributes.name}\nFiles uploaded: bot.js, package.json\nUpload results: ${result.results.map(r => `${r.path} (${r.success ? 'success' : 'failed'})`).join(', ')}`
+                          }]);
+                        } catch (error) {
+                          throw new Error(`Failed to upload files: ${error.message}`);
+                        }
                       } catch (error) {
                         setMessages(prev => [...prev, {
                           type: 'system',
