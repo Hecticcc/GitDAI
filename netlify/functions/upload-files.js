@@ -161,19 +161,15 @@ const handler = async (event, context) => {
 
       const startTime = Date.now();
       try {
-        // Convert content to base64
-        const base64Content = Buffer.from(content).toString('base64');
-        
-        log('Encoded Content', {
+        log('Content Details', {
           fileRequestId,
-          originalLength: content.length,
-          base64Length: base64Content.length,
-          base64Preview: base64Content.substring(0, 100) + '...'
+          contentLength: content.length,
+          contentPreview: content.substring(0, 100) + '...'
         });
 
         const requestBody = {
           file: path,
-          content: base64Content
+          content: content
         };
 
         log('Request Body', {
