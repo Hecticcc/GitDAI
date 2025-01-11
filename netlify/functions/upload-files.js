@@ -137,141 +137,107 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       
-      // Clean up the content
-      let fileContent = typeof content === 'string' ? content : JSON.stringify(content);
-      
-      // If content is a JSON string containing a content property, extract it
-      if (fileContent.startsWith('{') && fileContent.includes('"content"')) {
-        try {
-          const parsed = JSON.parse(fileContent);
-          if (parsed.content) {
-            fileContent = parsed.content;
-          }
-        } catch (e) {
-          // If parsing fails, use original content
-          log('Content Parse Warning', {
-            error: e.message,
-            willUseOriginal: true
-          }, 'warn');
-        }
-      }
-      
-      // Remove any JSON formatting artifacts
-      fileContent = fileContent.replace(/\\n/g, '\n')
-                              .replace(/\\"/g, '"')
-                              .replace(/\\t/g, '\t')
-                              .replace(/\\\\/g, '\\');
-
       // Ensure clean URL construction
-      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '').replace(/\/api$/, '');
+      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
       
-      log('Request Details', {
+      // Send the content directly without any JSON wrapping or escaping
+      const fileContent = typeof content === 'string' ? content : String(content);
+
+      log('Content Details', {
         fileRequestId,
-        url: apiUrl,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer [REDACTED]'
+        contentLength: fileContent.length,
+        contentPreview: fileContent.substring(0, 100),
+        contentType: typeof fileContent,
+        isRawCode: true
+      });
+
+      const requestBody = {
+        file: path,
+        content: fileContent
+
+      log('Request Body', {
+        fileRequestId,
+        body: {
+          file: requestBody.file,
+          contentLength: requestBody.content.length
         }
       });
 
-      const startTime = Date.now();
-      try {
-        log('Content Details', {
-          fileRequestId,
-          contentLength: content.length,
-          contentPreview: content.substring(0, 100) + '...'
-        });
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-Request-ID': fileRequestId
+        },
+        body: JSON.stringify(requestBody)
+      });
 
-        const requestBody = {
-          file: path,
-          content: fileContent
-        };
+      const duration = Date.now() - startTime;
+      const responseText = await response.text();
+      
+      log('Raw Response', {
+        fileRequestId,
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers),
+        body: responseText.substring(0, 1000)
+      });
 
-        log('Request Body', {
-          fileRequestId,
-          body: {
-            file: requestBody.file,
-            contentLength: requestBody.content.length
-          }
-        });
+      log('File Upload Response', {
+        fileRequestId,
+        path,
+        status: response.status,
+        duration,
+        success: response.ok
+      }, response.ok ? 'info' : 'error');
 
-        const response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Request-ID': fileRequestId
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        const duration = Date.now() - startTime;
-        const responseText = await response.text();
-        
-        log('Raw Response', {
-          fileRequestId,
-          status: response.status,
-          statusText: response.statusText,
-          headers: Object.fromEntries(response.headers),
-          body: responseText.substring(0, 1000)
-        });
-
-        log('File Upload Response', {
-          fileRequestId,
-          path,
-          status: response.status,
-          duration,
-          success: response.ok
-        }, response.ok ? 'info' : 'error');
-
-        if (!response.ok) {
-          let errorMessage;
-          try {
-            const errorData = JSON.parse(responseText);
-            log('Error Response Data', {
-              fileRequestId,
-              errorData
-            }, 'error');
-            errorMessage = errorData.errors?.[0]?.detail || 
-                          errorData.message || 
-                          `HTTP ${response.status}: ${response.statusText}`;
-          } catch {
-            log('Failed to Parse Error Response', {
-              fileRequestId,
-              responseText
-            }, 'error');
-            errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`;
-          }
-          throw new Error(`Failed to upload ${path}: ${errorMessage}`);
+      if (!response.ok) {
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(responseText);
+          log('Error Response Data', {
+            fileRequestId,
+            errorData
+          }, 'error');
+          errorMessage = errorData.errors?.[0]?.detail || 
+                        errorData.message || 
+                        `HTTP ${response.status}: ${response.statusText}`;
+        } catch {
+          log('Failed to Parse Error Response', {
+            fileRequestId,
+            responseText
+          }, 'error');
+          errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`;
         }
-
-        log('Upload Success', {
-          fileRequestId,
-          path,
-          duration,
-          size: content.length
-        });
-
-        return { 
-          path, 
-          success: true, 
-          duration,
-          size: content.length 
-        };
-      } catch (error) {
-        log('File Upload Error', {
-          fileRequestId,
-          path,
-          error: error.message,
-          stack: error.stack,
-          duration: Date.now() - startTime
-        }, 'error');
-        throw error;
+        throw new Error(`Failed to upload ${path}: ${errorMessage}`);
       }
+
+      log('Upload Success', {
+        fileRequestId,
+        path,
+        duration,
+        size: content.length
+      });
+
+      return { 
+        path, 
+        success: true, 
+        duration,
+        size: content.length 
+      };
+    } catch (error) {
+      log('File Upload Error', {
+        fileRequestId,
+        path,
+        error: error.message,
+        stack: error.stack,
+        duration: Date.now() - startTime
+      }, 'error');
+      throw error;
+    }
     });
 
     const results = await Promise.allSettled(uploadPromises);
