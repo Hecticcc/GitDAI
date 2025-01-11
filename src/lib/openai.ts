@@ -4,8 +4,7 @@ export type ModelType = 'gpt-3.5-turbo' | 'gpt-4';
 
 const SYSTEM_PROMPT = `You are an expert Discord bot developer. Help users create Discord bots by generating clean, secure JavaScript code using discord.js v14+.
 
-Current Features:
-- Tic-tac-toe game (!tictactoe @opponent)
+Current Features: None
 
 CRITICAL: When responding to user requests:
 1. ABSOLUTELY CRITICAL Code Preservation Rules:
@@ -204,8 +203,17 @@ export function generatePackageJson(): string {
 }
 
 const DEFAULT_CODE = `// Your bot code will appear here
-const Discord = require('discord.js');
-const client = new Discord.Client();
+const { Client, GatewayIntentBits } = require('discord.js');
+
+// Define the required intents for the bot
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,           // For guild-related events
+    GatewayIntentBits.GuildMessages,    // To listen to messages
+    GatewayIntentBits.MessageContent,   // To read message content
+    GatewayIntentBits.GuildMembers      // To interact with members
+  ]
+});
 
 // Bot token setup
 const TOKEN = 'TOKEN_HERE';
@@ -230,7 +238,8 @@ const formatMessages = (messages: ChatMessage[]) =>
 export function updateBotToken(code: string, token: string): string {
   // If code doesn't exist yet, use default code with the token
   if (!code || code === DEFAULT_CODE) {
-    return DEFAULT_CODE.replace(/['"]TOKEN_HERE['"]/, `'${token}'`);
+    return DEFAULT_CODE.replace(/['"]TOKEN_HERE['"]/, `'${token}'`)
+      .replace(/const \{ Client,/, 'const { Client, GatewayIntentBits } = require(\'discord.js\');');
   }
 
   // Look for existing token in different formats
@@ -243,6 +252,20 @@ export function updateBotToken(code: string, token: string): string {
 
   let updatedCode = code;
   let tokenFound = false;
+
+  // Ensure proper imports and intents
+  if (!updatedCode.includes('GatewayIntentBits')) {
+    updatedCode = updatedCode
+      .replace(/const \{ Client[^}]*\}/, 'const { Client, GatewayIntentBits }')
+      .replace(/new Client\(\)/, `new Client({
+  intents: [
+    GatewayIntentBits.Guilds,           // For guild-related events
+    GatewayIntentBits.GuildMessages,    // To listen to messages
+    GatewayIntentBits.MessageContent,   // To read message content
+    GatewayIntentBits.GuildMembers      // To interact with members
+  ]
+})`);
+  }
 
   // Try to replace existing token
   for (const pattern of tokenPatterns) {

@@ -27,7 +27,7 @@ const formatMessages = (messages: ChatMessage[]) =>
 
 function App() {
   const [messages, setMessages] = React.useState<ChatMessage[]>([
-    { type: 'system', content: 'Welcome! I can help you create a Discord bot. The current bot has a Tic-tac-toe game command. What would you like to add?' }
+    { type: 'system', content: 'Welcome! I can help you create a Discord bot. What would you like to add?' }
   ]);
   const [input, setInput] = React.useState('');
   const [currentCode, setCurrentCode] = React.useState(() => {
