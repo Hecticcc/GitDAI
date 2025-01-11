@@ -1,4 +1,4 @@
-const fetch = require('node-fetch');
+// Remove the require and we'll use dynamic import inside the handler
 
 function createLogger() {
   const logs = [];
@@ -29,9 +29,13 @@ const handler = async (event, context) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Content-Type': 'application/json',
-    'X-Request-ID': requestId
+    'X-Request-ID': requestId,
+    // Add Cloudflare-specific headers
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
   };
 
   if (event.httpMethod === 'OPTIONS') {
@@ -43,6 +47,9 @@ const handler = async (event, context) => {
   }
 
   try {
+    // Dynamically import node-fetch
+    const { default: fetch } = await import('node-fetch');
+
     let attempt = 1;
     const maxAttempts = 3;
     let lastError;
@@ -73,9 +80,15 @@ const handler = async (event, context) => {
           {
             method: 'GET',
             headers: {
+              'User-Agent': 'DiscordAI-Status-Check/1.0',
               'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
               'Accept': 'application/json',
-              'Cache-Control': 'no-cache'
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Pragma': 'no-cache',
+              'Expires': '0',
+              // Add Cloudflare bypass headers
+              'CF-IPCountry': 'US',
+              'CF-Connecting-IP': event.headers['client-ip'] || event.headers['x-forwarded-for'] || '127.0.0.1'
             },
             signal: controller.signal
           }
@@ -84,13 +97,15 @@ const handler = async (event, context) => {
         clearTimeout(timeout);
         
         // If we get a 502, retry with exponential backoff
-        if ((response.status === 502 || response.status === 504) && attempt < maxAttempts) {
+        if ((response.status === 502 || response.status === 504 || response.status === 522 || response.status === 524) && attempt < maxAttempts) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
           log('Retrying after gateway error', { 
             status: response.status,
             attempt, 
             delay,
-            remainingAttempts: maxAttempts - attempt
+            remainingAttempts: maxAttempts - attempt,
+            cfRay: response.headers.get('cf-ray'),
+            cfCache: response.headers.get('cf-cache-status')
           }, 'warn');
           await new Promise(resolve => setTimeout(resolve, delay));
           attempt++;
@@ -106,7 +121,9 @@ const handler = async (event, context) => {
           log('HTML Error Page', {
             status: statusCode,
             attempt,
-            responsePreview: responseText.substring(0, 200)
+            responsePreview: responseText.substring(0, 200),
+            cfRay: response.headers.get('cf-ray'),
+            cfCache: response.headers.get('cf-cache-status')
           }, 'error');
           throw new Error(errorMessage);
         }
