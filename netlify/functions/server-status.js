@@ -26,6 +26,80 @@ const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
   
+  // Add environment validation
+  const validateEnvironment = () => {
+    const required = {
+      PTERODACTYL_API_URL: process.env.PTERODACTYL_API_URL,
+      PTERODACTYL_API_KEY: process.env.PTERODACTYL_API_KEY
+    };
+
+    const missing = Object.entries(required)
+      .filter(([_, value]) => !value)
+      .map(([key]) => key);
+
+    if (missing.length > 0) {
+      throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+    }
+
+    // Validate API URL format
+    try {
+      new URL(process.env.PTERODACTYL_API_URL);
+    } catch (error) {
+      throw new Error('Invalid PTERODACTYL_API_URL format');
+    }
+
+    return required;
+  };
+
+  const headers = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Content-Type': 'application/json',
+    'X-Request-ID': requestId,
+    // Add Cloudflare-specific headers
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0'
+  };
+
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 204,
+      headers,
+      body: ''
+    };
+  }
+
+  let serverId;
+  let env;
+
+  try {
+    // Validate environment first
+    env = validateEnvironment();
+    log('Environment Validation', {
+      apiUrl: env.PTERODACTYL_API_URL.replace(/\/+$/, ''), // Remove trailing slashes
+      apiKeyLength: env.PTERODACTYL_API_KEY.length
+    });
+
+    serverId = validateAndLogRequest();
+  } catch (error) {
+    log('Validation Error', {
+      error: error.message,
+      requestParams: event.queryStringParameters
+    }, 'error');
+
+    return {
+      statusCode: 400,
+      headers,
+      body: JSON.stringify({
+        error: error.message,
+        requestId,
+        logs
+      })
+    };
+  }
+
   // Enhanced request validation and logging
   const validateAndLogRequest = () => {
     const { serverId } = event.queryStringParameters || {};
@@ -57,46 +131,6 @@ const handler = async (event, context) => {
     return serverId;
   };
 
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Content-Type': 'application/json',
-    'X-Request-ID': requestId,
-    // Add Cloudflare-specific headers
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0'
-  };
-
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 204,
-      headers,
-      body: ''
-    };
-  }
-
-  let serverId;
-  try {
-    serverId = validateAndLogRequest();
-  } catch (error) {
-    log('Validation Error', {
-      error: error.message,
-      requestParams: event.queryStringParameters
-    }, 'error');
-
-    return {
-      statusCode: 400,
-      headers,
-      body: JSON.stringify({
-        error: error.message,
-        requestId,
-        logs
-      })
-    };
-  }
-
   // Dynamically import node-fetch
   const { default: fetch } = await import('node-fetch');
 
@@ -116,14 +150,18 @@ const handler = async (event, context) => {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 15000); // Increase timeout to 15 seconds
 
-        const apiUrl = `${process.env.PTERODACTYL_API_URL}/api/application/servers/${serverId}`;
+        // Ensure clean URL construction
+        const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+        const apiUrl = `${baseUrl}/api/application/servers/${serverId}/resources`;
+
         log('Making API Request', {
           url: apiUrl,
           attempt,
           headers: {
             'User-Agent': 'DiscordAI-Status-Check/1.0',
             'Accept': 'application/json',
-            'Authorization': '[REDACTED]'
+            'Authorization': '[REDACTED]',
+            'X-Request-ID': requestId
           }
         });
 
@@ -176,13 +214,14 @@ const handler = async (event, context) => {
         // Check if we got an HTML error page
         if (responseText.includes('<!DOCTYPE html>')) {
           const statusCode = response.status;
-          const errorMessage = `Received HTML error page instead of JSON response (Status: ${statusCode})`;
+          const errorMessage = `Received HTML error page instead of JSON response (Status: ${statusCode}). This may indicate a proxy or gateway issue.`;
           log('HTML Error Page', {
             status: statusCode,
             attempt,
             responsePreview: responseText.substring(0, 200),
             cfRay: response.headers.get('cf-ray'),
-            cfCache: response.headers.get('cf-cache-status')
+            cfCache: response.headers.get('cf-cache-status'),
+            url: apiUrl
           }, 'error');
           throw new Error(errorMessage);
         }
@@ -222,7 +261,7 @@ const handler = async (event, context) => {
         log('Server Status Retrieved', {
           status: responseData.attributes.status,
           state: responseData.attributes.state,
-          installed: responseData.attributes.container?.installed,
+          resources: responseData.attributes.resources,
           attempt
         });
 
@@ -232,7 +271,7 @@ const handler = async (event, context) => {
           body: JSON.stringify({
             status: responseData.attributes.status,
             state: responseData.attributes.state,
-            installed: responseData.attributes.container?.installed,
+            resources: responseData.attributes.resources,
             requestId,
             logs
           })
