@@ -1,7 +1,8 @@
-// We'll use dynamic import for node-fetch
+// Enhanced file upload handler for Pterodactyl API with comprehensive debugging
 function createLogger() {
   const logs = [];
   const requestId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+  const startTime = Date.now();
 
   return {
     logs,
@@ -12,13 +13,89 @@ function createLogger() {
         requestId,
         stage,
         level,
+        duration: Date.now() - startTime,
         data: typeof data === 'object' ? JSON.stringify(data) : data
       };
       logs.push(entry);
-      console.log(`[${entry.timestamp}] [${level.toUpperCase()}] [${requestId}] ${stage}:`, data);
+      console.log(`[${entry.timestamp}] [${level.toUpperCase()}] [${requestId}] ${stage} (${entry.duration}ms):`, data);
       return entry;
     }
   };
+}
+
+// Validate environment variables
+function validateEnvironment(log) {
+  const required = {
+    PTERODACTYL_API_URL: process.env.PTERODACTYL_API_URL,
+    PTERODACTYL_API_KEY: process.env.PTERODACTYL_API_KEY
+  };
+
+  const missing = Object.entries(required)
+    .filter(([_, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    log('Environment Validation Failed', { missing }, 'error');
+    throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+  }
+
+  try {
+    new URL(process.env.PTERODACTYL_API_URL);
+  } catch (error) {
+    log('Invalid API URL', { url: process.env.PTERODACTYL_API_URL }, 'error');
+    throw new Error('Invalid PTERODACTYL_API_URL format');
+  }
+
+  log('Environment Validated', {
+    apiUrl: process.env.PTERODACTYL_API_URL.replace(/\/+$/, ''),
+    apiKeyLength: process.env.PTERODACTYL_API_KEY.length
+  });
+
+  return required;
+}
+
+// Validate request data
+function validateRequest(event, log) {
+  if (!event.body) {
+    log('Missing Request Body', {}, 'error');
+    throw new Error('Request body is required');
+  }
+
+  let data;
+  try {
+    data = JSON.parse(event.body);
+    log('Request Data', {
+      serverId: data.serverId,
+      fileCount: data.files?.length || 0,
+      method: event.httpMethod,
+      contentType: event.headers['content-type']
+    });
+  } catch (error) {
+    log('Invalid JSON', { error: error.message }, 'error');
+    throw new Error('Invalid JSON in request body');
+  }
+
+  const { serverId, files } = data;
+
+  if (!serverId) {
+    log('Missing Server ID', {}, 'error');
+    throw new Error('Server ID is required');
+  }
+
+  if (!files || !Array.isArray(files)) {
+    log('Invalid Files Array', { files }, 'error');
+    throw new Error('Files must be provided as an array');
+  }
+
+  // Validate each file object
+  files.forEach((file, index) => {
+    if (!file.path || typeof file.content !== 'string') {
+      log('Invalid File Object', { index, file }, 'error');
+      throw new Error(`Invalid file object at index ${index}`);
+    }
+  });
+
+  return { serverId, files };
 }
 
 const handler = async (event, context) => {
@@ -42,80 +119,90 @@ const handler = async (event, context) => {
   }
 
   try {
-    if (event.httpMethod !== 'POST') {
-      return {
-        statusCode: 405,
-        headers,
-        body: JSON.stringify({
-          error: 'Method not allowed',
-          allowedMethods: ['POST']
-        })
-      };
-    }
+    // Validate environment and request
+    const env = validateEnvironment(log);
+    const { serverId, files } = validateRequest(event, log);
 
-    // Validate environment variables
-    if (!process.env.PTERODACTYL_API_URL || !process.env.PTERODACTYL_API_KEY) {
-      throw new Error('Missing required environment variables');
-    }
-
-    const { serverId, files } = JSON.parse(event.body);
-
-    if (!serverId || !files || !Array.isArray(files)) {
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'Invalid request. Required: serverId and files array'
-        })
-      };
-    }
-
-    log('Uploading Files', {
+    log('Starting File Upload', {
       serverId,
-      fileCount: files.length
+      fileCount: files.length,
+      totalSize: files.reduce((acc, f) => acc + f.content.length, 0)
     });
 
     // Import node-fetch dynamically
     const { default: fetch } = await import('node-fetch');
 
-    const uploadPromises = files.map(async file => {
+    const uploadPromises = files.map(async (file, index) => {
       const { path, content } = file;
+      const fileRequestId = `${requestId}-file-${index}`;
       
       // Ensure clean URL construction
-      const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
+      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+      const apiUrl = `${baseUrl}/api/application/servers/${serverId}/files/write`;
       
-      log('Making API Request', {
-        url: apiUrl,
+      log('Uploading File', {
+        fileRequestId,
         path,
-        contentLength: content.length
+        contentLength: content.length,
+        url: apiUrl
       });
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
+      const startTime = Date.now();
+      try {
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${env.PTERODACTYL_API_KEY}`,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'X-Request-ID': fileRequestId
+          },
+          body: JSON.stringify({
+            file: path,
+            content: Buffer.from(content).toString('base64')
+          })
+        });
+
+        const duration = Date.now() - startTime;
+        const responseText = await response.text();
+        
+        log('File Upload Response', {
+          fileRequestId,
           path,
-          raw: content // Send raw content instead of base64
-        })
-      });
+          status: response.status,
+          duration,
+          headers: Object.fromEntries(response.headers),
+          response: responseText.substring(0, 1000)
+        }, response.ok ? 'info' : 'error');
 
-      const responseText = await response.text();
-      log('Raw Response', {
-        status: response.status,
-        headers: Object.fromEntries(response.headers),
-        body: responseText
-      });
+        if (!response.ok) {
+          let errorMessage;
+          try {
+            const errorData = JSON.parse(responseText);
+            errorMessage = errorData.errors?.[0]?.detail || 
+                          errorData.message || 
+                          `HTTP ${response.status}: ${response.statusText}`;
+          } catch {
+            errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`;
+          }
+          throw new Error(`Failed to upload ${path}: ${errorMessage}`);
+        }
 
-      if (!response.ok) {
-        throw new Error(`Failed to upload ${path}: ${responseText}`);
+        return { 
+          path, 
+          success: true, 
+          duration,
+          size: content.length 
+        };
+      } catch (error) {
+        log('File Upload Error', {
+          fileRequestId,
+          path,
+          error: error.message,
+          duration: Date.now() - startTime
+        }, 'error');
+        throw error;
       }
-
-      return { path, success: true };
     });
 
     const results = await Promise.allSettled(uploadPromises);
@@ -123,25 +210,38 @@ const handler = async (event, context) => {
     const uploadResults = results.map((result, index) => ({
       path: files[index].path,
       success: result.status === 'fulfilled',
-      error: result.status === 'rejected' ? result.reason.message : null
+      error: result.status === 'rejected' ? result.reason.message : null,
+      duration: result.status === 'fulfilled' ? result.value.duration : null,
+      size: result.status === 'fulfilled' ? result.value.size : null
     }));
 
-    log('Upload Complete', {
+    const successCount = uploadResults.filter(r => r.success).length;
+    const failureCount = uploadResults.filter(r => !r.success).length;
+
+    log('Upload Summary', {
+      total: files.length,
+      successful: successCount,
+      failed: failureCount,
       results: uploadResults
     });
 
     return {
-      statusCode: 200,
+      statusCode: successCount > 0 ? 200 : 500,
       headers,
       body: JSON.stringify({
-        success: true,
+        success: successCount > 0,
         results: uploadResults,
+        summary: {
+          total: files.length,
+          successful: successCount,
+          failed: failureCount
+        },
         requestId,
         logs
       })
     };
   } catch (error) {
-    log('Error', {
+    log('Fatal Error', {
       message: error.message,
       stack: error.stack
     }, 'error');
