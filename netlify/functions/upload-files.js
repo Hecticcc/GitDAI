@@ -137,30 +137,32 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       
-      // Ensure clean URL construction
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
       
-      // Send the content directly without any JSON wrapping or escaping
-      const fileContent = typeof content === 'string' ? content : String(content);
+      // Convert content to base64 to preserve formatting and special characters
+      const fileContent = Buffer.from(content).toString('base64');
 
       log('Content Details', {
         fileRequestId,
         contentLength: fileContent.length,
         contentPreview: fileContent.substring(0, 100),
         contentType: typeof fileContent,
-        isRawCode: true
+        encoding: 'base64'
       });
 
       const requestBody = {
         file: path,
-        content: fileContent
+        content: fileContent,
+        encoding: 'base64'
+      };
 
       log('Request Body', {
         fileRequestId,
         body: {
           file: requestBody.file,
-          contentLength: requestBody.content.length
+          contentLength: requestBody.content.length,
+          encoding: requestBody.encoding
         }
       });
 
