@@ -56,12 +56,13 @@ const handler = async (event, context) => {
 
     const { serverId } = event.queryStringParameters;
 
-    if (!serverId) {
+    // Validate server ID format (should be a UUID)
+    if (!serverId || !serverId.includes('-')) {
       return {
         statusCode: 400,
         headers,
         body: JSON.stringify({
-          error: 'Server ID is required',
+          error: 'Invalid server ID format. Expected full UUID.',
           requestId,
           logs
         })
