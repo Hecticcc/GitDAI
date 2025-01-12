@@ -136,19 +136,29 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
+      
+      // Parse content if it's a JSON string
+      let fileContent = content;
+      try {
+        const parsedContent = JSON.parse(content);
+        if (parsedContent.content) {
+          fileContent = parsedContent.content;
+        }
+      } catch (e) {
+        // Content is not JSON, use as is
+      }
 
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/client/servers/${serverId}/files/write`;
       
-      // Ensure content is treated as plain text
       const fileData = {
         file: path,
-        content: content
+        content: fileContent
       };
 
       log('Content Details', {
         fileRequestId,
-        contentLength: content.length,
+        contentLength: fileContent.length,
         path,
         contentType: 'text/plain'
       });
@@ -156,7 +166,7 @@ const handler = async (event, context) => {
       log('Request Body', {
         fileRequestId,
         path,
-        contentLength: content.length
+        contentLength: fileContent.length
       });
 
       const response = await fetch(apiUrl, {
