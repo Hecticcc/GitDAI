@@ -126,62 +126,6 @@ const handler = async (event, context) => {
     const env = validateEnvironment(log);
     const { serverId, files } = validateRequest(event, log);
 
-    // Add retry mechanism for server readiness
-    const maxRetries = 3;
-    const retryDelay = 30000; // 30 seconds between retries
-    let attempt = 1;
-
-    while (attempt <= maxRetries) {
-      try {
-        log('Checking Server Status', {
-          serverId,
-          attempt,
-          maxRetries
-        });
-
-        // Check server status before attempting upload
-        const statusResponse = await fetch(
-          `${env.PTERODACTYL_API_URL}/api/client/servers/${serverId}/resources`,
-          {
-            headers: {
-              'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-              'Accept': 'application/json'
-            }
-          }
-        );
-
-        if (statusResponse.status === 409) {
-          log('Server Not Ready', {
-            attempt,
-            willRetry: attempt < maxRetries
-          }, 'warn');
-
-          if (attempt < maxRetries) {
-            log('Waiting Before Retry', {
-              delay: retryDelay,
-              nextAttempt: attempt + 1
-            });
-            await new Promise(resolve => setTimeout(resolve, retryDelay));
-            attempt++;
-            continue;
-          }
-          throw new Error('Server installation not complete after maximum retries');
-        }
-
-        if (!statusResponse.ok) {
-          throw new Error(`Failed to check server status: ${statusResponse.status}`);
-        }
-
-        // If we get here, server is ready for file uploads
-        break;
-      } catch (error) {
-        if (attempt === maxRetries) {
-          throw error;
-        }
-        attempt++;
-      }
-    }
-
     log('Starting File Upload', {
       serverId,
       fileCount: files.length,
