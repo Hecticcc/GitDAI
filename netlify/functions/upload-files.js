@@ -137,8 +137,9 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
-      
-      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+
+      // Ensure proper URL construction by removing any trailing /api
+      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/api\/?$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
       
       // Convert content to base64 to preserve formatting and special characters
