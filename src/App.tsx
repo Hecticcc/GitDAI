@@ -1,11 +1,13 @@
 import React from 'react';
 import JSZip from 'jszip';
-import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket } from 'lucide-react';
+import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket, LogOut } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
 import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
 import { SolutionMessage } from './components/SolutionMessage';
+import { AuthForms } from './components/AuthForms';
+import { useAuth, checkSavedLogin, loginUser, logoutUser } from './lib/firebase';
 
 interface ChatMessage {
   type: 'user' | 'system';
@@ -26,6 +28,34 @@ const formatMessages = (messages: ChatMessage[]) =>
   }));
 
 function App() {
+  const [user, setUser] = React.useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    // Check for saved login
+    const checkAuth = async () => {
+      const savedEmail = await checkSavedLogin();
+      if (savedEmail) {
+        try {
+          // Attempt to login with saved credentials
+          await loginUser(savedEmail, '', true);
+        } catch (error) {
+          console.error('Auto-login failed:', error);
+        }
+      }
+      setIsAuthLoading(false);
+    };
+
+    // Listen for auth state changes
+    const unsubscribe = useAuth((user) => {
+      setUser(user);
+      setIsAuthLoading(false);
+    });
+
+    checkAuth();
+    return unsubscribe;
+  }, []);
+
   const [messages, setMessages] = React.useState<ChatMessage[]>([
     { type: 'system', content: 'Welcome! I can help you create a Discord bot. What would you like to add?' }
   ]);
@@ -211,6 +241,26 @@ ${messages
 
   return (
     <div className="min-h-screen bg-[#2C2F33] text-gray-100">
+      {/* Auth Check */}
+      {isAuthLoading ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <LoadingDots />
+        </div>
+      ) : !user ? (
+        <div className="flex items-center justify-center min-h-screen">
+          <AuthForms
+            onSuccess={() => {}}
+            onError={(error) => {
+              setMessages(prev => [...prev, {
+                type: 'system',
+                content: `Authentication error: ${error}`,
+                isSolution: true
+              }]);
+            }}
+          />
+        </div>
+      ) : (
+      <>
       {/* Header */}
       <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -254,6 +304,13 @@ ${messages
             >
               <Download className="w-5 h-5" />
               <span>Download</span>
+            </button>
+            <button
+              onClick={() => logoutUser()}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>Logout</span>
             </button>
             </div>
           </nav>
@@ -584,6 +641,8 @@ ${messages
           </div>
         </div>
       </main>
+      </>
+      )}
     </div>
   );
 }

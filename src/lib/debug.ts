@@ -136,6 +136,7 @@ class DebugLogger {
   error(stage: string, data: unknown, source: string, metadata?: Record<string, unknown>) {
     this.log({ stage, data, level: 'error', source, metadata });
   }
+
   startRequest(requestId: string) {
     this.activeRequests.set(requestId, Date.now());
   }
