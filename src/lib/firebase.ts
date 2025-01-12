@@ -16,7 +16,8 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  Timestamp
 } from '@firebase/firestore';
 import { debugLogger } from './debug';
 
@@ -41,8 +42,8 @@ interface UserData {
   username: string;
   name: string;
   pterodactylId: string;
-  lastLogin?: Date;
-  createdAt: Date;
+  lastLogin?: Timestamp;
+  createdAt: Timestamp;
   dob: string;
   servers: string[];
   id: string;
@@ -137,8 +138,8 @@ export async function registerUser(email: string, password: string, username: st
       username,
       name: username,
       pterodactylId,
-      createdAt: new Date(),
-      lastLogin: new Date(),
+      createdAt: Timestamp.fromDate(new Date()),
+      lastLogin: Timestamp.fromDate(new Date()),
       dob,
       servers: [],
       tokens: 500 // Give 500 tokens on registration
@@ -196,7 +197,7 @@ export async function loginUser(email: string, password: string, rememberMe: boo
     
     // Update last login
     await setDoc(doc(db, 'users', userCredential.user.uid), {
-      lastLogin: new Date()
+      lastLogin: Timestamp.fromDate(new Date())
     }, { merge: true });
     
     if (rememberMe) {
