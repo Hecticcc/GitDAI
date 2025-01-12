@@ -39,6 +39,7 @@ const handler = async (event, context) => {
     // Additional validation
     console.log('Environment Check:', {
       PTERODACTYL_API_URL: process.env.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_API_URL_VALUE: process.env.PTERODACTYL_API_URL,
       PTERODACTYL_API_KEY: process.env.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]',
       PTERODACTYL_API_KEY_LENGTH: process.env.PTERODACTYL_API_KEY?.length || 0,
       NODE_VERSION: process.version,
@@ -52,7 +53,26 @@ const handler = async (event, context) => {
 
     // Validate API URL format
     try {
-      new URL(process.env.PTERODACTYL_API_URL);
+      const apiUrl = new URL(process.env.PTERODACTYL_API_URL);
+      // Ensure URL ends with /api
+      if (!apiUrl.pathname.endsWith('/api')) {
+        console.error('API URL must end with /api:', apiUrl.toString());
+        throw new Error('Invalid API URL format - must end with /api');
+      }
+      // Ensure protocol is https
+      if (apiUrl.protocol !== 'https:') {
+        console.error('API URL must use HTTPS:', apiUrl.toString());
+        throw new Error('Invalid API URL format - must use HTTPS');
+      }
+      console.log('API URL Validation:', {
+        original: process.env.PTERODACTYL_API_URL,
+        parsed: {
+          protocol: apiUrl.protocol,
+          hostname: apiUrl.hostname,
+          pathname: apiUrl.pathname,
+          href: apiUrl.href
+        }
+      });
     } catch (error) {
       console.error('Invalid API URL format:', process.env.PTERODACTYL_API_URL);
       throw new Error('Invalid API URL configuration');
@@ -82,6 +102,18 @@ const handler = async (event, context) => {
     // Check if user already exists
     const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
     const userCheckUrl = `${baseUrl}/api/application/users?filter[email]=${encodeURIComponent(email)}`;
+    
+    // Log the full request details (redacting sensitive info)
+    console.log('Full Request Details:', {
+      baseUrl: baseUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
+      checkUrl: userCheckUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer [REDACTED]',
+        'Accept': 'application/json',
+        'User-Agent': 'DiscordAI-Bot/1.0'
+      }
+    });
 
     console.log('API Request:', {
       method: 'GET',
