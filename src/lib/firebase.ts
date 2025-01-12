@@ -124,6 +124,11 @@ async function checkExistingEmail(email: string): Promise<boolean> {
 
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
+    // Validate inputs before making any API calls
+    if (!email || !password || !username || !dob) {
+      throw new Error('All fields are required');
+    }
+
     // Check for existing username in Firebase
     const usernameExists = await checkExistingUsername(username);
     if (usernameExists) {
@@ -150,13 +155,10 @@ export async function registerUser(email: string, password: string, username: st
     // Create Pterodactyl user
     let pterodactylId;
     try {
-      const response = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
-      const responseData = JSON.parse(response.body);
-      pterodactylId = responseData.attributes?.uuid;
+      pterodactylId = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
       
       if (!pterodactylId) {
-        console.error('Invalid Pterodactyl response:', responseData);
-        throw new Error('Failed to get Pterodactyl user UUID from response');
+        throw new Error('Failed to get Pterodactyl user ID');
       }
 
       console.log('Pterodactyl user created:', {
@@ -178,10 +180,9 @@ export async function registerUser(email: string, password: string, username: st
       username: username.toLowerCase(),
       name: username,
       pterodactylId,
-      createdAt: Timestamp.fromDate(new Date()),
-      lastLogin: Timestamp.fromDate(new Date()),
+      createdAt: new Date(),
+      lastLogin: new Date(),
       dob,
-      servers: [],
       servers: [] as string[],
       tokens: 500 // Give 500 tokens on registration
     };
@@ -189,7 +190,11 @@ export async function registerUser(email: string, password: string, username: st
     try {
       // Create user document after authentication
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, userData);
+      await setDoc(userRef, {
+        ...userData,
+        createdAt: Timestamp.fromDate(userData.createdAt),
+        lastLogin: Timestamp.fromDate(userData.lastLogin)
+      });
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -203,7 +208,7 @@ export async function registerUser(email: string, password: string, username: st
         userId: userCredential.user.uid,
         email,
         username,
-        createdAt: Timestamp.fromDate(new Date())
+        createdAt: Timestamp.fromDate(userData.createdAt)
       });
 
       // Verify pterodactyl mapping was created
