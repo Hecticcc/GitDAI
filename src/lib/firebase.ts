@@ -133,32 +133,55 @@ export async function registerUser(email: string, password: string, username: st
     // Store additional user data in Firestore
     const userData: UserData = {
       id: userCredential.user.uid,
-      email: email,
-      username: username,
+      email,
+      username,
       name: username,
-      pterodactylId: pterodactylId,
+      pterodactylId,
       createdAt: new Date(),
       lastLogin: new Date(),
-      dob: dob,
+      dob,
       servers: [],
       tokens: 500 // Give 500 tokens on registration
     };
     
     try {
-      await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+      // Create user document with merge option to ensure it's created
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      await setDoc(userRef, userData, { merge: true });
+      
+      // Verify the document was created
+      const docSnap = await getDoc(userRef);
+      if (!docSnap.exists()) {
+        throw new Error('Failed to create user document');
+      }
       
       // Also create a reference by pterodactyl ID for easy lookup
-      await setDoc(doc(db, 'pterodactyl_users', pterodactylId), {
+      const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
+      await setDoc(pterodactylRef, {
         userId: userCredential.user.uid,
         email,
         username
-      });
+      }, { merge: true });
+
+      // Verify pterodactyl mapping was created
+      const pterodactylSnap = await getDoc(pterodactylRef);
+      if (!pterodactylSnap.exists()) {
+        throw new Error('Failed to create pterodactyl user mapping');
+      }
 
     } catch (error) {
+      console.error('Firestore Error:', error);
       // If Firestore save fails, clean up
       await userCredential.user.delete();
       throw new Error(`Failed to save user data: ${error.message}`);
     }
+    
+    console.log('User registration complete:', {
+      uid: userCredential.user.uid,
+      email,
+      username,
+      pterodactylId
+    });
     
     return userCredential.user;
   } catch (error) {
