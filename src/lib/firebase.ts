@@ -123,7 +123,7 @@ export async function registerUser(email: string, password: string, username: st
     // Create Pterodactyl user
     let pterodactylId;
     try {
-      pterodactylId = await createPterodactylUser(email, password, username, username, username);
+      pterodactylId = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
     } catch (error) {
       // If Pterodactyl user creation fails, delete the Firebase user
       await userCredential.user.delete();
@@ -154,8 +154,8 @@ export async function registerUser(email: string, password: string, username: st
         userId: userCredential.user.uid,
         email,
         username,
-        firstName,
-        lastName
+        firstName: 'DiscordAI',
+        lastName: 'Bot'
       });
 
     } catch (error) {

@@ -29,6 +29,7 @@ const formatMessages = (messages: ChatMessage[]) =>
 
 function App() {
   const [user, setUser] = React.useState<User | null>(null);
+  const [userData, setUserData] = React.useState<UserData | null>(null);
   const [isAuthLoading, setIsAuthLoading] = React.useState(true);
 
   React.useEffect(() => {
@@ -50,6 +51,16 @@ function App() {
     const unsubscribe = useAuth((user) => {
       setUser(user);
       setIsAuthLoading(false);
+      if (user) {
+        // Fetch user data when user logs in
+        getUserData(user.uid).then(data => {
+          setUserData(data);
+        }).catch(error => {
+          console.error('Error fetching user data:', error);
+        });
+      } else {
+        setUserData(null);
+      }
     });
 
     checkAuth();
@@ -410,6 +421,14 @@ ${messages
                   (isLoading || isGenerating) ? 'cursor-not-allowed opacity-50' : ''
                 }`}
               />
+              {userData && (
+                <div className="flex items-center justify-end space-x-2 text-sm">
+                  <span className="text-gray-400">Available Tokens:</span>
+                  <span className="px-2 py-1 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
+                    {userData.tokens}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center justify-between space-x-2">
                 <div className="flex items-center space-x-2">
                   <button

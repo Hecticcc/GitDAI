@@ -2,14 +2,29 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Helper function to validate token operations
+    function isValidTokenOperation() {
+      let oldTokens = resource.data.tokens;
+      let newTokens = request.resource.data.tokens;
+      // Only allow decreasing tokens or setting initial tokens to 500
+      return (oldTokens == null && newTokens == 500) || 
+             (oldTokens != null && newTokens < oldTokens);
+    }
+
     // Allow authenticated users to read/write their own data
     match /users/{userId} {
       allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && request.auth.uid == userId && 
+      allow create: if request.auth != null && 
+                   request.auth.uid == userId && 
                    request.resource.data.tokens == 500;
-      allow update: if request.auth != null && request.auth.uid == userId && 
-                   (request.resource.data.tokens == resource.data.tokens || 
-                    request.resource.data.tokens < resource.data.tokens);
+      allow update: if request.auth != null && 
+                   request.auth.uid == userId && 
+                   (
+                     // Allow token updates only if they follow the rules
+                     isValidTokenOperation() ||
+                     // Allow updating other fields without changing tokens
+                     request.resource.data.tokens == resource.data.tokens
+                   );
     }
     
     // Allow authenticated users to read/write pterodactyl user mappings
