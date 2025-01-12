@@ -7,9 +7,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Allow authenticated users to read/write their own pterodactyl user mapping
+    // Allow authenticated users to read/write pterodactyl user mappings
     match /pterodactyl_users/{pterodactylId} {
-      allow read, write: if request.auth != null;
+      allow create: if request.auth != null && 
+                   request.resource.data.userId == request.auth.uid;
+      allow read: if request.auth != null && 
+                 (resource.data.userId == request.auth.uid || 
+                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
     }
     
     // Default deny

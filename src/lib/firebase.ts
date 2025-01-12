@@ -132,14 +132,16 @@ export async function registerUser(email: string, password: string, username: st
     // Store additional user data in Firestore
     const userData: UserData = {
       id: userCredential.user.uid,
-      email,
-      username,
+      email: email,
+      username: username,
       name: username,
-      pterodactylId,
-      createdAt: new Date(),
-      lastLogin: new Date(),
-      dob,
+      pterodactylId: pterodactylId,
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      dob: dob,
       servers: [],
+      firstName: firstName,
+      lastName: lastName
     };
     
     try {
@@ -149,7 +151,9 @@ export async function registerUser(email: string, password: string, username: st
       await setDoc(doc(db, 'pterodactyl_users', pterodactylId), {
         userId: userCredential.user.uid,
         email,
-        username
+        username,
+        firstName,
+        lastName
       });
 
     } catch (error) {
