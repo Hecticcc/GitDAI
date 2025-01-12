@@ -137,8 +137,9 @@ const handler = async (event, context) => {
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
 
-      // Ensure we have the correct API URL format
-      const apiUrl = `${env.PTERODACTYL_API_URL.replace(/\/+$/, '')}/api/client/servers/${serverId}/files/write`;
+      // Fix API URL format by removing duplicate /api prefix
+      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+      const apiUrl = `${baseUrl}/client/servers/${serverId}/files/write`;
       
       // Prepare the file content
       const fileData = {
