@@ -121,12 +121,12 @@ const handler = async (event, context) => {
 
     // Check if user already exists
     const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-    const userCheckUrl = `${baseUrl}/api/application/users?filter[email]=${encodeURIComponent(email)}`;
+    const userCheckUrl = `${baseUrl}/application/users?filter[email]=${encodeURIComponent(email)}`;
     
     // Test API connectivity first
     try {
       console.log('Testing API connectivity...');
-      const testResponse = await fetch(`${baseUrl}/api/application/users`, {
+      const testResponse = await fetch(`${baseUrl}/application/users`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
@@ -260,7 +260,7 @@ const handler = async (event, context) => {
     const createController = new AbortController();
     const createTimeout = setTimeout(() => createController.abort(), 30000);
 
-    const response = await fetch(`${baseUrl}/api/application/users`, {
+    const response = await fetch(`${baseUrl}/application/users`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
