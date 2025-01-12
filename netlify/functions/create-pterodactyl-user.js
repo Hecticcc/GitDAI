@@ -29,41 +29,61 @@ const handler = async (event, context) => {
     let parsedBody;
     try {
       parsedBody = JSON.parse(event.body);
+      console.log('Parsed request body:', {
+        ...parsedBody,
+        password: '[REDACTED]'
+      });
     } catch (error) {
       console.error('Failed to parse request body:', error);
       throw new Error('Invalid JSON in request body');
     }
 
-    const { email, password, username, firstName, lastName } = JSON.parse(event.body);
+    const { email, password, username, firstName, lastName } = parsedBody;
     
     // Additional validation
     console.log('Environment Check:', {
       PTERODACTYL_API_URL: process.env.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
-      PTERODACTYL_API_URL_VALUE: process.env.PTERODACTYL_API_URL,
+      PTERODACTYL_API_URL_VALUE: process.env.PTERODACTYL_API_URL?.replace(/\/+$/, ''),
       PTERODACTYL_API_KEY: process.env.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]',
       PTERODACTYL_API_KEY_LENGTH: process.env.PTERODACTYL_API_KEY?.length || 0,
       NODE_VERSION: process.version,
-      INPUT: { email, username, firstName, lastName }
+      INPUT: { email, username, firstName, lastName },
+      FUNCTION_NAME: context.functionName,
+      FUNCTION_VERSION: context.functionVersion,
+      REQUEST_ID: context.awsRequestId
     });
 
     if (!process.env.PTERODACTYL_API_URL || !process.env.PTERODACTYL_API_KEY) {
       console.error('Missing required environment variables');
-      throw new Error('Server configuration error');
+      throw new Error('Missing required environment variables: PTERODACTYL_API_URL and/or PTERODACTYL_API_KEY');
     }
 
     // Validate API URL format
     try {
       const apiUrl = new URL(process.env.PTERODACTYL_API_URL);
-      // Ensure URL ends with /api
-      if (!apiUrl.pathname.endsWith('/api')) {
-        console.error('API URL must end with /api:', apiUrl.toString());
-        throw new Error('Invalid API URL format - must end with /api');
+      // Clean up URL path
+      const cleanPath = apiUrl.pathname.replace(/\/+/g, '/').replace(/\/+$/, '');
+      
+      // Check if path contains /api
+      if (!cleanPath.includes('/api')) {
+        console.error('API URL must contain /api in path:', {
+          url: apiUrl.toString(),
+          path: cleanPath,
+          hostname: apiUrl.hostname
+        });
+        throw new Error('Invalid API URL format - must include /api in path');
       }
+      
       // Ensure protocol is https
       if (apiUrl.protocol !== 'https:') {
-        console.error('API URL must use HTTPS:', apiUrl.toString());
+        console.error('API URL must use HTTPS:', {
+          url: apiUrl.toString(),
+          protocol: apiUrl.protocol,
+          hostname: apiUrl.hostname
+        });
         throw new Error('Invalid API URL format - must use HTTPS');
       }
+      
       console.log('API URL Validation:', {
         original: process.env.PTERODACTYL_API_URL,
         parsed: {
@@ -102,6 +122,39 @@ const handler = async (event, context) => {
     // Check if user already exists
     const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
     const userCheckUrl = `${baseUrl}/api/application/users?filter[email]=${encodeURIComponent(email)}`;
+    
+    // Test API connectivity first
+    try {
+      console.log('Testing API connectivity...');
+      const testResponse = await fetch(`${baseUrl}/api/application/users`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
+          'Accept': 'application/json',
+          'User-Agent': 'DiscordAI-Bot/1.0'
+        }
+      });
+
+      if (!testResponse.ok) {
+        const testErrorText = await testResponse.text();
+        console.error('API Connectivity Test Failed:', {
+          status: testResponse.status,
+          statusText: testResponse.statusText,
+          response: testErrorText,
+          headers: Object.fromEntries(testResponse.headers)
+        });
+        throw new Error(`API connectivity test failed: ${testResponse.status} ${testResponse.statusText}`);
+      }
+
+      console.log('API connectivity test successful');
+    } catch (error) {
+      console.error('API Connectivity Test Error:', {
+        message: error.message,
+        stack: error.stack,
+        url: `${baseUrl}/api/application/users`
+      });
+      throw new Error(`Failed to connect to Pterodactyl API: ${error.message}`);
+    }
     
     // Log the full request details (redacting sensitive info)
     console.log('Full Request Details:', {
@@ -184,12 +237,7 @@ const handler = async (event, context) => {
     // Create user
     console.log('Creating User:', {
       requestUrl: `${baseUrl}/api/application/users`,
-      method: 'POST',
-      headers: {
-        'Authorization': 'Bearer [REDACTED]',
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+      method: 'POST'
     });
     
     const requestBody = {
@@ -203,6 +251,10 @@ const handler = async (event, context) => {
     };
 
     console.log('Request Body:', JSON.stringify(requestBody, null, 2));
+    console.log('Request Body:', {
+      ...requestBody,
+      password: '[REDACTED]'
+    });
 
     // Create new controller for create request
     const createController = new AbortController();
@@ -213,7 +265,8 @@ const handler = async (event, context) => {
       headers: {
         'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'User-Agent': 'DiscordAI-Bot/1.0'
       },
       body: JSON.stringify(requestBody),
       signal: createController.signal
@@ -224,17 +277,18 @@ const handler = async (event, context) => {
     if (!response.ok) {
       const errorText = await response.text();
       let parsedError = null;
-      let errorDetails = '';
+      let errorDetails = errorText;
       
       try {
-        parsedError = errorText ? JSON.parse(errorText) : null;
-        errorDetails = JSON.stringify(parsedError, null, 2);
+        if (errorText && errorText.trim()) {
+          parsedError = JSON.parse(errorText);
+          errorDetails = JSON.stringify(parsedError, null, 2);
+        }
       } catch (e) {
         console.error('Error Response Parse Failed:', {
           error: e.message,
-          rawResponse: errorText
+          rawResponse: errorText.substring(0, 1000)
         });
-        errorDetails = errorText;
       }
 
       console.error('User Creation Failed:', {
@@ -242,7 +296,7 @@ const handler = async (event, context) => {
         statusText: response.statusText,
         contentType: response.headers.get('content-type'),
         headers: Object.fromEntries(response.headers),
-        error: errorDetails,
+        error: errorDetails.substring(0, 1000),
         url: `${baseUrl}/api/application/users`
       });
 
@@ -252,11 +306,13 @@ const handler = async (event, context) => {
       } else if (response.status === 422) {
         const validationErrors = parsedError?.errors?.map(e => e.detail).join(', ');
         throw new Error(`Validation error: ${validationErrors || 'Invalid user data provided'}`);
+      } else if (response.status === 500) {
+        throw new Error('Pterodactyl server error. Please check the panel logs.');
       }
 
       const errorMessage = parsedError?.errors?.[0]?.detail || 
                           parsedError?.message || 
-                          `Failed to create Pterodactyl user (Status: ${response.status} ${response.statusText})`;
+                          `Failed to create Pterodactyl user (${response.status} ${response.statusText})`;
       throw new Error(errorMessage);
     }
 
