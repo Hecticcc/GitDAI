@@ -1,3 +1,5 @@
+import fetch from 'node-fetch';
+
 // Enhanced file upload handler for Pterodactyl API with comprehensive debugging
 function createLogger() {
   const logs = [];
@@ -185,9 +187,6 @@ const handler = async (event, context) => {
       fileCount: files.length,
       totalSize: files.reduce((acc, f) => acc + f.content.length, 0)
     });
-
-    // Import node-fetch dynamically
-    const { default: fetch } = await import('node-fetch');
 
     const uploadPromises = files.map(async (file, index) => {
       const { path, content } = file;
