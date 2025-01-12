@@ -139,30 +139,29 @@ const handler = async (event, context) => {
       const uploadStartTime = Date.now();
       
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/client/servers/${serverId}/files/upload`;
+      const apiUrl = `${baseUrl}/client/servers/${serverId}/files/write`;
 
-      // Create form-data instance
-      const form = new FormData();
-      form.append('files', Buffer.from(content), {
-        filename: path,
-        contentType: 'application/octet-stream'
-      });
+      // Prepare file write request
+      const fileData = {
+        file: path,
+        content: content
+      };
 
       log('Content Details', {
         fileRequestId,
         contentLength: content.length,
         path,
-        contentType: 'multipart/form-data'
+        contentType: 'application/json'
       });
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          ...form.getHeaders(),
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
+          'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: form
+        body: JSON.stringify(fileData)
       });
 
       const duration = Date.now() - uploadStartTime;
