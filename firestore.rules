@@ -4,7 +4,12 @@ service cloud.firestore {
   match /databases/{database}/documents {
     // Allow authenticated users to read/write their own data
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow create: if request.auth != null && request.auth.uid == userId && 
+                   request.resource.data.tokens == 500;
+      allow update: if request.auth != null && request.auth.uid == userId && 
+                   (request.resource.data.tokens == resource.data.tokens || 
+                    request.resource.data.tokens < resource.data.tokens);
     }
     
     // Allow authenticated users to read/write pterodactyl user mappings

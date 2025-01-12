@@ -46,9 +46,10 @@ interface UserData {
   dob: string;
   servers: string[];
   id: string;
+  tokens: number;
 }
 
-export async function createPterodactylUser(email: string, password: string, username: string) {
+export async function createPterodactylUser(email: string, password: string, username: string, firstName: string, lastName: string) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
 
@@ -67,8 +68,8 @@ export async function createPterodactylUser(email: string, password: string, use
         email,
         password,
         username,
-        firstName: 'Discord',
-        lastName: 'Bot User'
+        firstName,
+        lastName
       })
     });
 
@@ -122,7 +123,7 @@ export async function registerUser(email: string, password: string, username: st
     // Create Pterodactyl user
     let pterodactylId;
     try {
-      pterodactylId = await createPterodactylUser(email, password, username);
+      pterodactylId = await createPterodactylUser(email, password, username, username, username);
     } catch (error) {
       // If Pterodactyl user creation fails, delete the Firebase user
       await userCredential.user.delete();
@@ -140,6 +141,7 @@ export async function registerUser(email: string, password: string, username: st
       lastLogin: new Date().toISOString(),
       dob: dob,
       servers: [],
+      tokens: 500, // Give 500 tokens on registration
       firstName: firstName,
       lastName: lastName
     };
