@@ -275,17 +275,11 @@ ${messages
       <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center space-x-3 px-4 py-3">
-            <img 
-              src="https://imgur.com/EvGczt2.png" 
-              alt="Discord Bot Builder Logo" 
-              className="w-8 h-8 rounded"
+            <img
+              src="https://imgur.com/1YoQljt.png"
+              alt="Discord Bot Builder"
+              className="h-8 object-contain"
             />
-            <div className="relative">
-              <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-[#7289DA] to-[#5865F2]">
-                Discord Bot Builder
-              </h1>
-              <div className="absolute -bottom-1 left-0 right-0 h-px bg-gradient-to-r from-[#7289DA]/0 via-[#7289DA]/50 to-[#7289DA]/0" />
-            </div>
           </div>
           <nav className="flex items-center px-4">
             <div className="flex items-center space-x-2 p-1 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5">
