@@ -136,6 +136,7 @@ const handler = async (event, context) => {
     const uploadPromises = files.map(async (file, index) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
+      const uploadStartTime = Date.now();
       
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
@@ -177,7 +178,7 @@ const handler = async (event, context) => {
         body: JSON.stringify(requestBody)
       });
 
-      const duration = Date.now() - startTime;
+      const duration = Date.now() - uploadStartTime;
       const responseText = await response.text();
       
       log('Raw Response', {
