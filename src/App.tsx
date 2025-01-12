@@ -422,12 +422,9 @@ ${messages
               />
               {userData && (
                 <div className="flex items-center justify-end space-x-2 text-sm">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-gray-400">Available Tokens:</span>
-                    <div className="flex items-center px-3 py-1.5 bg-[#7289DA]/10 text-[#7289DA] rounded-md">
-                      <span className="font-semibold">{userData.tokens}</span>
-                      <span className="ml-1 text-xs text-[#7289DA]/80">tokens</span>
-                    </div>
+                  <span className="text-gray-400">Available Tokens:</span>
+                  <div className="px-3 py-1.5 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
+                    {userData.tokens}
                   </div>
                 </div>
               )}
@@ -573,32 +570,6 @@ ${messages
                   >
                     <Rocket className={`w-4 h-4 ${isCreatingServer ? 'animate-pulse' : ''}`} />
                     <span>{isCreatingServer ? 'Creating Server...' : 'Deploy to Pterodactyl'}</span>
-                  </button>
-                  <button
-                    onClick={async () => {
-                      try {
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: 'Testing direct server creation...'
-                        }]);
-                        
-                        const result = await testCreateServer();
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: `Test server created successfully!\nServer ID: ${result.attributes?.id || 'unknown'}`
-                        }]);
-                      } catch (error) {
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: `Test server creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                          isSolution: true
-                        }]);
-                      }
-                    }}
-                    className="group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 bg-[#2F3136] text-gray-300 hover:bg-[#40444B]"
-                  >
-                    <Rocket className="w-4 h-4" />
-                    <span>Test Server</span>
                   </button>
                 </div>
                 <button
