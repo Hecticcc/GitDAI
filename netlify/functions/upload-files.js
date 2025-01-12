@@ -138,45 +138,35 @@ const handler = async (event, context) => {
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
 
-      // Ensure proper URL construction by removing any trailing /api
+      // Ensure proper URL construction for the upload endpoint
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/api\/?$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
+      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
       
-      // Convert content to base64 to preserve formatting and special characters
-      const fileContent = Buffer.from(content).toString('base64');
+      // Create form data with the file content
+      const formData = new FormData();
+      const blob = new Blob([content], { type: 'text/plain' });
+      formData.append('files', blob, path);
 
       log('Content Details', {
         fileRequestId,
-        contentLength: fileContent.length,
-        contentPreview: fileContent.substring(0, 100),
-        contentType: typeof fileContent,
-        encoding: 'base64'
+        contentLength: content.length,
+        path,
+        contentType: 'text/plain'
       });
-
-      const requestBody = {
-        file: path,
-        content: fileContent,
-        encoding: 'base64'
-      };
 
       log('Request Body', {
         fileRequestId,
-        body: {
-          file: requestBody.file,
-          contentLength: requestBody.content.length,
-          encoding: requestBody.encoding
-        }
+        path,
+        contentLength: content.length
       });
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
           'X-Request-ID': fileRequestId
         },
-        body: JSON.stringify(requestBody)
+        body: formData
       });
 
       const duration = Date.now() - uploadStartTime;
