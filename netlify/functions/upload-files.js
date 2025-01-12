@@ -138,15 +138,15 @@ const handler = async (event, context) => {
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
 
-      // Ensure proper URL construction for the upload endpoint
+      // Use the correct write endpoint for file uploads
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/api\/?$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
+      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
       
-      // Create form data using form-data package
-      const FormData = (await import('form-data')).default;
-      const formData = new FormData();
-      const buffer = Buffer.from(content);
-      formData.append('files', buffer, path);
+      // Prepare the file content
+      const fileData = {
+        file: path,
+        content: Buffer.from(content).toString('base64')
+      };
 
       log('Content Details', {
         fileRequestId,
@@ -164,10 +164,11 @@ const handler = async (event, context) => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-          ...formData.getHeaders()
         },
-        body: formData
+        body: JSON.stringify(fileData)
       });
 
       const duration = Date.now() - uploadStartTime;
