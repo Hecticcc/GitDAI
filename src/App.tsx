@@ -111,6 +111,19 @@ function App() {
     try {
       const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
       const response = await getChatResponse(formatMessages([...messages, userMessage]), model);
+
+      // Check if user has enough tokens
+      if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: `Insufficient tokens. This operation requires ${tokenCost.totalCost} tokens${
+            tokenCost.isEnhancedAI ? ' (including 2.5x Enhanced AI multiplier)' : ''
+          }, but you only have ${userData.tokens} tokens available.`,
+          isSolution: true
+        }]);
+        return;
+      }
+
       const codeBlock = extractCodeBlock(response);
       
       if (codeBlock) {
@@ -273,15 +286,15 @@ ${messages
       <>
       {/* Header */}
       <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-3 px-4 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-[85px]">
+          <div className="flex items-center px-6">
             <img
               src="https://imgur.com/1YoQljt.png"
               alt="Discord Bot Builder"
-              className="h-8 object-contain"
+              className="w-[85px] h-[65px] object-contain"
             />
           </div>
-          <nav className="flex items-center px-4">
+          <nav className="flex items-center px-6">
             <div className="flex items-center space-x-2 p-1 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5">
             <button
               onClick={() => setShowHistory(true)}
@@ -415,14 +428,6 @@ ${messages
                   (isLoading || isGenerating) ? 'cursor-not-allowed opacity-50' : ''
                 }`}
               />
-              {userData && (
-                <div className="flex items-center justify-end space-x-2 text-sm">
-                  <span className="text-gray-400">Available Tokens:</span>
-                  <span className="px-2 py-1 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
-                    {userData.tokens}
-                  </span>
-                </div>
-              )}
               <div className="flex items-center justify-between space-x-2">
                 <div className="flex items-center space-x-2">
                   <button
@@ -566,6 +571,14 @@ ${messages
                     <Rocket className={`w-4 h-4 ${isCreatingServer ? 'animate-pulse' : ''}`} />
                     <span>{isCreatingServer ? 'Creating Server...' : 'Deploy to Pterodactyl'}</span>
                   </button>
+                  {userData && (
+                    <div className="flex items-center space-x-2 text-sm">
+                      <span className="text-gray-400">Tokens:</span>
+                      <span className="px-2 py-1 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
+                        {userData.tokens}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <button
                   type="submit"

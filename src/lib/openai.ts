@@ -1,4 +1,5 @@
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions';
+import { calculateTokenCost, TokenCalculation } from './tokenCalculator';
 
 export type ModelType = 'gpt-3.5-turbo' | 'gpt-4';
 
@@ -73,6 +74,11 @@ REMEMBER: NEVER replace or remove existing commands - only ADD new ones!`;
 
 const DEBUG = true;
 
+interface ChatResponse {
+  content: string;
+  tokenCost?: TokenCalculation;
+}
+
 interface DebugInfo {
   stage: string;
   data: unknown;
@@ -86,7 +92,7 @@ function debug(info: DebugInfo) {
   }
 }
 
-export async function getChatResponse(messages: ChatCompletionMessageParam[], model: ModelType = 'gpt-3.5-turbo') {
+export async function getChatResponse(messages: ChatCompletionMessageParam[], model: ModelType = 'gpt-3.5-turbo'): Promise<ChatResponse> {
   try {
     debug({ stage: 'Request Messages', data: messages });
 
@@ -136,8 +142,19 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
 
     const data = await response.json();
     debug({ stage: 'API Response', data: data });
-    debug({ stage: 'Response Content', data: data.choices[0].message.content });
-    return data.choices[0].message.content;
+    const content = data.choices[0].message.content;
+    debug({ stage: 'Response Content', data: content });
+
+    // Extract code block and calculate token cost
+    const codeBlock = extractCodeBlock(content);
+    const tokenCost = codeBlock ? calculateTokenCost(codeBlock, model === 'gpt-4') : undefined;
+
+    debug({ stage: 'Token Cost', data: tokenCost });
+
+    return {
+      content,
+      tokenCost
+    };
   } catch (error) {
     console.error('OpenAI API Error:', error);
     if (error instanceof Error) {

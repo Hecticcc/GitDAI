@@ -332,6 +332,23 @@ export async function getUserData(userId: string): Promise<UserData | null> {
   }
 }
 
+export async function updateUserTokens(userId: string, newTokens: number): Promise<void> {
+  try {
+    if (newTokens < 0) {
+      throw new Error('Insufficient tokens');
+    }
+    
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, {
+      tokens: newTokens,
+      updatedAt: Timestamp.now()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error updating user tokens:', error);
+    throw error;
+  }
+}
+
 // Check for saved login credentials on startup
 export async function checkSavedLogin() {
   const rememberMe = localStorage.getItem('rememberMe');

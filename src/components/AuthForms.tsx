@@ -105,8 +105,8 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
         <img 
           src="https://imgur.com/1YoQljt.png" 
           alt="Discord Bot Builder Logo" 
-          width="225" 
-          height="125"
+          width="85" 
+          height="65"
           className="rounded-lg shadow-lg"
         />
       </div>
