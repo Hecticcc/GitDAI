@@ -3,11 +3,10 @@ import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket, LogOut } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
 import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
+import { AuthForms } from './components/AuthForms';
+import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData } from './lib/firebase';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
-import { SolutionMessage } from './components/SolutionMessage';
-import { AuthForms } from './components/AuthForms';
-import { useAuth, checkSavedLogin, loginUser, logoutUser } from './lib/firebase';
 
 interface ChatMessage {
   type: 'user' | 'system';

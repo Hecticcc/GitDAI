@@ -108,18 +108,38 @@ export async function createPterodactylUser(email: string, password: string, use
   }
 }
 
-async function checkExistingUsername(username: string): Promise<boolean> {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('username', '==', username.toLowerCase()));
-  const querySnapshot = await getDocs(q);
-  return !querySnapshot.empty;
-}
+async function checkPterodactylUser(email: string, username?: string): Promise<{emailExists: boolean, usernameExists: boolean}> {
+  try {
+    const response = await fetch('/.netlify/functions/create-pterodactyl-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: email.toLowerCase(),
+        username: username?.toLowerCase(),
+        checkOnly: true
+      })
+    });
 
-async function checkExistingEmail(email: string): Promise<boolean> {
-  const usersRef = collection(db, 'users');
-  const q = query(usersRef, where('email', '==', email.toLowerCase()));
-  const querySnapshot = await getDocs(q);
-  return !querySnapshot.empty;
+    const data = await response.json();
+    
+    return {
+      emailExists: !response.ok && (
+        response.status === 409 || 
+        data.error?.toLowerCase().includes('email already exists') ||
+        data.error?.toLowerCase().includes('email is already taken')
+      ),
+      usernameExists: !response.ok && (
+        response.status === 409 ||
+        data.error?.toLowerCase().includes('username already exists') ||
+        data.error?.toLowerCase().includes('username is already taken')
+      )
+    };
+  } catch (error) {
+    console.error('Error checking Pterodactyl user:', error);
+    throw new Error('Unable to verify user availability');
+  }
 }
 
 export async function registerUser(email: string, password: string, username: string, dob: string) {
@@ -127,6 +147,16 @@ export async function registerUser(email: string, password: string, username: st
     // Validate inputs before making any API calls
     if (!email || !password || !username || !dob) {
       throw new Error('All fields are required');
+    }
+    
+    // Check if email or username exists in Pterodactyl
+    const { emailExists, usernameExists } = await checkPterodactylUser(email, username);
+    if (emailExists && usernameExists) {
+      throw new Error('Both email and username are already taken');
+    } else if (emailExists) {
+      throw new Error('Email is already registered');
+    } else if (usernameExists) {
+      throw new Error('Username is already taken');
     }
 
     // Create Firebase user
@@ -176,8 +206,8 @@ export async function registerUser(email: string, password: string, username: st
       username: username.toLowerCase(),
       name: username,
       pterodactylId,
-      createdAt: new Date(),
-      lastLogin: new Date(),
+      createdAt: Timestamp.now(),
+      lastLogin: Timestamp.now(),
       dob,
       servers: [] as string[],
       tokens: 500 // Give 500 tokens on registration
@@ -186,11 +216,7 @@ export async function registerUser(email: string, password: string, username: st
     try {
       // Create user document after authentication
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, {
-        ...userData,
-        createdAt: Timestamp.fromDate(userData.createdAt),
-        lastLogin: Timestamp.fromDate(userData.lastLogin)
-      });
+      await setDoc(userRef, userData);
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -204,7 +230,7 @@ export async function registerUser(email: string, password: string, username: st
         userId: userCredential.user.uid,
         email,
         username,
-        createdAt: Timestamp.fromDate(userData.createdAt)
+        createdAt: Timestamp.now()
       });
 
       // Verify pterodactyl mapping was created
