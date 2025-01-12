@@ -110,7 +110,7 @@ function App() {
     
     try {
       const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
-      const response = await getChatResponse(formatMessages([...messages, userMessage]), model);
+      const { content: response, tokenCost } = await getChatResponse(formatMessages([...messages, userMessage]), model);
 
       // Check if user has enough tokens
       if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
@@ -125,6 +125,13 @@ function App() {
       }
 
       const codeBlock = extractCodeBlock(response);
+      
+      // If we used tokens, update the user's token count
+      if (tokenCost && userData) {
+        const newTokens = userData.tokens - tokenCost.totalCost;
+        await updateUserTokens(userData.id, newTokens);
+        setUserData(prev => prev ? { ...prev, tokens: newTokens } : null);
+      }
       
       if (codeBlock) {
         // Apply bot token to the new code if available
