@@ -422,10 +422,13 @@ ${messages
               />
               {userData && (
                 <div className="flex items-center justify-end space-x-2 text-sm">
-                  <span className="text-gray-400">Available Tokens:</span>
-                  <span className="px-2 py-1 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
-                    {userData.tokens}
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-gray-400">Available Tokens:</span>
+                    <div className="flex items-center px-3 py-1.5 bg-[#7289DA]/10 text-[#7289DA] rounded-md">
+                      <span className="font-semibold">{userData.tokens}</span>
+                      <span className="ml-1 text-xs text-[#7289DA]/80">tokens</span>
+                    </div>
+                  </div>
                 </div>
               )}
               <div className="flex items-center justify-between space-x-2">

@@ -71,18 +71,29 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
-    
+
     setIsLoading(true);
 
     try {
       if (isLogin) {
-        await loginUser(formData.email, formData.password, rememberMe);
+        try {
+          await loginUser(formData.email, formData.password, rememberMe);
+        } catch (error) {
+          // Handle specific login errors
+          if (error instanceof Error) {
+            onError(error.message);
+          } else {
+            onError('Failed to login. Please check your credentials.');
+          }
+          return;
+        }
       } else {
         await registerUser(formData.email, formData.password, formData.username, formData.dob);
       }
       onSuccess();
     } catch (error) {
-      onError(error instanceof Error ? error.message : 'Authentication failed');
+      const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+      onError(errorMessage);
     } finally {
       setIsLoading(false);
     }

@@ -238,22 +238,6 @@ export async function registerUser(email: string, password: string, username: st
       if (!docSnap.exists()) {
         throw new Error('Failed to create user document');
       }
-      
-      // Also create a reference by pterodactyl ID for easy lookup
-      const pterodactylRef = doc(db, 'pterodactyl_users', String(pterodactylId));
-      await setDoc(pterodactylRef, {
-        userId: userCredential.user.uid,
-        email,
-        username,
-        createdAt: Timestamp.now(),
-        pterodactylId: String(pterodactylId)
-      });
-
-      // Verify pterodactyl mapping was created
-      const pterodactylSnap = await getDoc(pterodactylRef);
-      if (!pterodactylSnap.exists()) {
-        throw new Error('Failed to create pterodactyl user mapping');
-      }
 
     } catch (error) {
       console.error('Firestore Error:', error);
@@ -280,6 +264,11 @@ export async function loginUser(email: string, password: string, rememberMe: boo
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     
+    // Only proceed with updates if we have a valid user
+    if (!userCredential?.user?.uid) {
+      throw new Error('Failed to authenticate user');
+    }
+
     // Update last login
     await setDoc(doc(db, 'users', userCredential.user.uid), {
       lastLogin: Timestamp.fromDate(new Date()),
@@ -299,6 +288,16 @@ export async function loginUser(email: string, password: string, rememberMe: boo
     return userCredential.user;
   } catch (error) {
     console.error('Error during login:', error);
+    // Provide more specific error messages
+    if (error.code === 'auth/invalid-credential') {
+      throw new Error('Invalid email or password');
+    } else if (error.code === 'auth/user-not-found') {
+      throw new Error('No account found with this email');
+    } else if (error.code === 'auth/wrong-password') {
+      throw new Error('Incorrect password');
+    } else if (error.code === 'auth/too-many-requests') {
+      throw new Error('Too many failed attempts. Please try again later');
+    }
     throw error;
   }
 }
