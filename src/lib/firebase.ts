@@ -129,18 +129,6 @@ export async function registerUser(email: string, password: string, username: st
       throw new Error('All fields are required');
     }
 
-    // Check for existing username in Firebase
-    const usernameExists = await checkExistingUsername(username);
-    if (usernameExists) {
-      throw new Error('Username is already taken');
-    }
-
-    // Check for existing email in Firebase
-    const emailExists = await checkExistingEmail(email);
-    if (emailExists) {
-      throw new Error('Email is already registered');
-    }
-
     // Create Firebase user
     let userCredential;
     try {
@@ -170,7 +158,15 @@ export async function registerUser(email: string, password: string, username: st
     } catch (error) {
       // If Pterodactyl user creation fails, delete the Firebase user
       await userCredential.user.delete();
-      throw new Error(`Failed to create Pterodactyl account: ${error.message}`);
+      
+      // Check for specific Pterodactyl errors
+      if (error.message.includes('email already exists')) {
+        throw new Error('Email is already registered');
+      } else if (error.message.includes('username already exists')) {
+        throw new Error('Username is already taken');
+      } else {
+        throw new Error(`Failed to create Pterodactyl account: ${error.message}`);
+      }
     }
     
     // Store additional user data in Firestore
