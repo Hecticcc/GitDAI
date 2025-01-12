@@ -124,9 +124,6 @@ async function checkExistingEmail(email: string): Promise<boolean> {
 
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
-    // Create user document reference first
-    const userRef = doc(collection(db, 'users'));
-
     // Check for existing username in Firebase
     const usernameExists = await checkExistingUsername(username);
     if (usernameExists) {
@@ -142,7 +139,7 @@ export async function registerUser(email: string, password: string, username: st
     // Create Firebase user
     let userCredential;
     try {
-      userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password);
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
         throw new Error('Email is already registered');
@@ -176,7 +173,7 @@ export async function registerUser(email: string, password: string, username: st
     
     // Store additional user data in Firestore
     const userData: UserData = {
-      id: userRef.id,
+      id: userCredential.user.uid,
       email: email.toLowerCase(),
       username: username.toLowerCase(),
       name: username,
@@ -185,12 +182,14 @@ export async function registerUser(email: string, password: string, username: st
       lastLogin: Timestamp.fromDate(new Date()),
       dob,
       servers: [],
+      servers: [] as string[],
       tokens: 500 // Give 500 tokens on registration
     };
     
     try {
-      // Create user document with merge option to ensure it's created
-      await setDoc(userRef, userData, { merge: true });
+      // Create user document after authentication
+      const userRef = doc(db, 'users', userCredential.user.uid);
+      await setDoc(userRef, userData);
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -201,7 +200,7 @@ export async function registerUser(email: string, password: string, username: st
       // Also create a reference by pterodactyl ID for easy lookup
       const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
       await setDoc(pterodactylRef, {
-        userId: userRef.id,
+        userId: userCredential.user.uid,
         email,
         username,
         createdAt: Timestamp.fromDate(new Date())
