@@ -230,16 +230,6 @@ const handler = async (event, context) => {
         duration,
         size: content.length 
       };
-    } catch (error) {
-      log('File Upload Error', {
-        fileRequestId,
-        path,
-        error: error.message,
-        stack: error.stack,
-        duration: Date.now() - startTime
-      }, 'error');
-      throw error;
-    }
     });
 
     const results = await Promise.allSettled(uploadPromises);
