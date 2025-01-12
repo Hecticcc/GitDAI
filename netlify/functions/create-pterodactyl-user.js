@@ -121,7 +121,8 @@ const handler = async (event, context) => {
 
     // Check if user already exists
     const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-    const userCheckUrl = `${baseUrl}/application/users?filter[email]=${encodeURIComponent(email)}`;
+    const emailCheckUrl = `${baseUrl}/application/users?filter[email]=${encodeURIComponent(email)}`;
+    const usernameCheckUrl = `${baseUrl}/application/users?filter[username]=${encodeURIComponent(username)}`;
     
     // Test API connectivity first
     try {
@@ -159,7 +160,8 @@ const handler = async (event, context) => {
     // Log the full request details (redacting sensitive info)
     console.log('Full Request Details:', {
       baseUrl: baseUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
-      checkUrl: userCheckUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
+      emailCheckUrl: emailCheckUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
+      usernameCheckUrl: usernameCheckUrl.replace(process.env.PTERODACTYL_API_KEY, '[REDACTED]'),
       method: 'GET',
       headers: {
         'Authorization': 'Bearer [REDACTED]',
@@ -168,30 +170,31 @@ const handler = async (event, context) => {
       }
     });
 
-    console.log('API Request:', {
+    // Check email
+    console.log('Email Check Request:', {
       method: 'GET',
-      url: userCheckUrl,
+      url: emailCheckUrl,
       headers: {
         'Authorization': 'Bearer [REDACTED]',
         'Accept': 'application/json'
       }
     });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const emailController = new AbortController();
+    const emailTimeout = setTimeout(() => emailController.abort(), 30000);
 
-    const checkResponse = await fetch(userCheckUrl, {
+    const emailCheckResponse = await fetch(emailCheckUrl, {
       headers: {
         'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
         'Accept': 'application/json'
       },
-      signal: controller.signal
+      signal: emailController.signal
     });
 
-    clearTimeout(timeout);
+    clearTimeout(emailTimeout);
 
-    if (!checkResponse.ok) {
-      const errorText = await checkResponse.text();
+    if (!emailCheckResponse.ok) {
+      const errorText = await emailCheckResponse.text();
       let parsedErrorText;
       
       try {
@@ -200,38 +203,79 @@ const handler = async (event, context) => {
         parsedErrorText = errorText;
       }
 
-      console.error('User Check Failed:', {
-        status: checkResponse.status,
-        statusText: checkResponse.statusText,
-        headers: Object.fromEntries(checkResponse.headers),
+      console.error('Email Check Failed:', {
+        status: emailCheckResponse.status,
+        statusText: emailCheckResponse.statusText,
+        headers: Object.fromEntries(emailCheckResponse.headers),
         body: parsedErrorText,
-        url: userCheckUrl
+        url: emailCheckUrl
       });
       
       // Specific error handling based on status code
-      if (checkResponse.status === 401) {
+      if (emailCheckResponse.status === 401) {
         throw new Error('Invalid API credentials');
-      } else if (checkResponse.status === 403) {
+      } else if (emailCheckResponse.status === 403) {
         throw new Error('API key does not have sufficient permissions');
-      } else if (checkResponse.status === 404) {
+      } else if (emailCheckResponse.status === 404) {
         throw new Error('Invalid API endpoint');
       }
       
-      throw new Error(`Failed to check existing users: ${checkResponse.status} ${checkResponse.statusText}`);
+      throw new Error(`Failed to check existing email: ${emailCheckResponse.status} ${emailCheckResponse.statusText}`);
     }
 
-    let checkData;
+    let emailCheckData;
     try {
-      const checkText = await checkResponse.text();
-      console.log('User Check Response:', checkText);
-      checkData = JSON.parse(checkText);
+      const emailCheckText = await emailCheckResponse.text();
+      console.log('Email Check Response:', emailCheckText);
+      emailCheckData = JSON.parse(emailCheckText);
     } catch (error) {
-      console.error('Failed to parse user check response:', error);
-      throw new Error('Invalid response format from user check');
+      console.error('Failed to parse email check response:', error);
+      throw new Error('Invalid response format from email check');
     }
 
-    if (checkData.data?.length > 0) {
+    if (emailCheckData.data?.length > 0) {
       throw new Error('A Pterodactyl account with this email already exists');
+    }
+
+    // Check username
+    console.log('Username Check Request:', {
+      method: 'GET',
+      url: usernameCheckUrl,
+      headers: {
+        'Authorization': 'Bearer [REDACTED]',
+        'Accept': 'application/json'
+      }
+    });
+
+    const usernameController = new AbortController();
+    const usernameTimeout = setTimeout(() => usernameController.abort(), 30000);
+
+    const usernameCheckResponse = await fetch(usernameCheckUrl, {
+      headers: {
+        'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
+        'Accept': 'application/json'
+      },
+      signal: usernameController.signal
+    });
+
+    clearTimeout(usernameTimeout);
+
+    if (!usernameCheckResponse.ok) {
+      throw new Error(`Failed to check existing username: ${usernameCheckResponse.status} ${usernameCheckResponse.statusText}`);
+    }
+
+    let usernameCheckData;
+    try {
+      const usernameCheckText = await usernameCheckResponse.text();
+      console.log('Username Check Response:', usernameCheckText);
+      usernameCheckData = JSON.parse(usernameCheckText);
+    } catch (error) {
+      console.error('Failed to parse username check response:', error);
+      throw new Error('Invalid response format from username check');
+    }
+
+    if (usernameCheckData.data?.length > 0) {
+      throw new Error('A Pterodactyl account with this username already exists');
     }
 
     // Create user

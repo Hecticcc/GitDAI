@@ -108,8 +108,34 @@ export async function createPterodactylUser(email: string, password: string, use
   }
 }
 
+async function checkExistingUsername(username: string): Promise<boolean> {
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, where('username', '==', username.toLowerCase()));
+  const querySnapshot = await getDocs(q);
+  return !querySnapshot.empty;
+}
+
+async function checkExistingEmail(email: string): Promise<boolean> {
+  const usersRef = collection(db, 'users');
+  const q = query(usersRef, where('email', '==', email.toLowerCase()));
+  const querySnapshot = await getDocs(q);
+  return !querySnapshot.empty;
+}
+
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
+    // Check for existing username in Firebase
+    const usernameExists = await checkExistingUsername(username);
+    if (usernameExists) {
+      throw new Error('Username is already taken');
+    }
+
+    // Check for existing email in Firebase
+    const emailExists = await checkExistingEmail(email);
+    if (emailExists) {
+      throw new Error('Email is already registered');
+    }
+
     // Create Firebase user
     let userCredential;
     try {
@@ -124,12 +150,21 @@ export async function registerUser(email: string, password: string, username: st
     // Create Pterodactyl user
     let pterodactylId;
     try {
-      const pterodactylResponse = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
-      pterodactylId = pterodactylResponse.attributes?.uuid || pterodactylResponse.attributes?.id;
+      const response = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
+      const responseData = JSON.parse(response.body);
+      pterodactylId = responseData.attributes?.uuid;
       
       if (!pterodactylId) {
-        throw new Error('Failed to get Pterodactyl user ID from response');
+        console.error('Invalid Pterodactyl response:', responseData);
+        throw new Error('Failed to get Pterodactyl user UUID from response');
       }
+
+      console.log('Pterodactyl user created:', {
+        uuid: pterodactylId,
+        email,
+        username
+      });
+
     } catch (error) {
       // If Pterodactyl user creation fails, delete the Firebase user
       await userCredential.user.delete();
@@ -139,8 +174,8 @@ export async function registerUser(email: string, password: string, username: st
     // Store additional user data in Firestore
     const userData: UserData = {
       id: userCredential.user.uid,
-      email,
-      username,
+      email: email.toLowerCase(),
+      username: username.toLowerCase(),
       name: username,
       pterodactylId,
       createdAt: Timestamp.fromDate(new Date()),
@@ -153,11 +188,7 @@ export async function registerUser(email: string, password: string, username: st
     try {
       // Create user document with merge option to ensure it's created
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, {
-        ...userData,
-        createdAt: Timestamp.fromDate(new Date()),
-        lastLogin: Timestamp.fromDate(new Date())
-      });
+      await setDoc(userRef, userData);
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -169,9 +200,9 @@ export async function registerUser(email: string, password: string, username: st
       const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
       await setDoc(pterodactylRef, {
         userId: userCredential.user.uid,
-        createdAt: Timestamp.fromDate(new Date()),
         email,
-        username
+        username,
+        createdAt: Timestamp.fromDate(new Date())
       });
 
       // Verify pterodactyl mapping was created
