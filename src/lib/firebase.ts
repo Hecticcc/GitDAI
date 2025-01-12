@@ -124,7 +124,12 @@ export async function registerUser(email: string, password: string, username: st
     // Create Pterodactyl user
     let pterodactylId;
     try {
-      pterodactylId = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
+      const pterodactylResponse = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
+      pterodactylId = pterodactylResponse.attributes?.uuid || pterodactylResponse.attributes?.id;
+      
+      if (!pterodactylId) {
+        throw new Error('Failed to get Pterodactyl user ID from response');
+      }
     } catch (error) {
       // If Pterodactyl user creation fails, delete the Firebase user
       await userCredential.user.delete();
@@ -148,7 +153,11 @@ export async function registerUser(email: string, password: string, username: st
     try {
       // Create user document with merge option to ensure it's created
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, userData, { merge: true });
+      await setDoc(userRef, {
+        ...userData,
+        createdAt: Timestamp.fromDate(new Date()),
+        lastLogin: Timestamp.fromDate(new Date())
+      });
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -160,9 +169,10 @@ export async function registerUser(email: string, password: string, username: st
       const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
       await setDoc(pterodactylRef, {
         userId: userCredential.user.uid,
+        createdAt: Timestamp.fromDate(new Date()),
         email,
         username
-      }, { merge: true });
+      });
 
       // Verify pterodactyl mapping was created
       const pterodactylSnap = await getDoc(pterodactylRef);
@@ -197,7 +207,8 @@ export async function loginUser(email: string, password: string, rememberMe: boo
     
     // Update last login
     await setDoc(doc(db, 'users', userCredential.user.uid), {
-      lastLogin: Timestamp.fromDate(new Date())
+      lastLogin: Timestamp.fromDate(new Date()),
+      updatedAt: Timestamp.fromDate(new Date())
     }, { merge: true });
     
     if (rememberMe) {
