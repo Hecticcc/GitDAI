@@ -107,8 +107,8 @@ const handler = async (event, context) => {
     }
 
     // Validate required fields
-    if (!email || !password || !username) {
-      throw new Error('Missing required fields');
+    if (!email || !password || !username || !firstName || !lastName) {
+      throw new Error('Missing required fields: email, password, username, firstName, and lastName are required');
     }
 
     const { default: fetch } = await import('node-fetch');
@@ -243,12 +243,17 @@ const handler = async (event, context) => {
     const requestBody = {
       email,
       username,
-      first_name: firstName || 'Discord',
-      last_name: lastName || 'User',
+      first_name: firstName,
+      last_name: lastName,
       password,
       root_admin: false,
       language: 'en'
     };
+
+    // Validate name fields
+    if (firstName.length < 1 || lastName.length < 1) {
+      throw new Error('First name and last name must not be empty');
+    }
 
     console.log('Request Body:', JSON.stringify(requestBody, null, 2));
     console.log('Request Body:', {
