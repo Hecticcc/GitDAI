@@ -103,7 +103,7 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
     <div className="w-full max-w-md mx-auto">
       <div className="flex justify-center mb-8">
         <img 
-          src="https://imgur.com/EvGczt2.png" 
+          src="https://imgur.com/1YoQljt.png" 
           alt="Discord Bot Builder Logo" 
           width="225" 
           height="125"
