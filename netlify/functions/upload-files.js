@@ -194,14 +194,13 @@ const handler = async (event, context) => {
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
 
-      // Use the correct write endpoint for file uploads
-      const baseUrl = env.PTERODACTYL_API_URL.replace(/\/api\/?$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/write`;
+      // Ensure we have the correct API URL format
+      const apiUrl = `${env.PTERODACTYL_API_URL.replace(/\/+$/, '')}/api/client/servers/${serverId}/files/write`;
       
       // Prepare the file content
       const fileData = {
         file: path,
-        content: Buffer.from(content).toString('base64')
+        content: content
       };
 
       log('Content Details', {
@@ -220,9 +219,9 @@ const handler = async (event, context) => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
         body: JSON.stringify(fileData)
       });
@@ -249,20 +248,27 @@ const handler = async (event, context) => {
       if (!response.ok) {
         let errorMessage;
         try {
-          const errorData = JSON.parse(responseText);
+          const errorData = responseText ? JSON.parse(responseText) : { message: 'Unknown error' };
           log('Error Response Data', {
             fileRequestId,
             errorData
           }, 'error');
-          errorMessage = errorData.errors?.[0]?.detail || 
-                        errorData.message || 
-                        `HTTP ${response.status}: ${response.statusText}`;
+          
+          if (response.status === 413) {
+            errorMessage = 'File is too large';
+          } else if (response.status === 404) {
+            errorMessage = 'Server not found';
+          } else {
+            errorMessage = errorData.errors?.[0]?.detail || 
+                          errorData.message || 
+                          `HTTP ${response.status}: ${response.statusText}`;
+          }
         } catch {
           log('Failed to Parse Error Response', {
             fileRequestId,
             responseText
           }, 'error');
-          errorMessage = responseText || `HTTP ${response.status}: ${response.statusText}`;
+          errorMessage = responseText?.substring(0, 100) || `HTTP ${response.status}: ${response.statusText}`;
         }
         throw new Error(`Failed to upload ${path}: ${errorMessage}`);
       }
