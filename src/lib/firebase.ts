@@ -137,13 +137,11 @@ export async function registerUser(email: string, password: string, username: st
       username: username,
       name: username,
       pterodactylId: pterodactylId,
-      createdAt: new Date().toISOString(),
-      lastLogin: new Date().toISOString(),
+      createdAt: new Date(),
+      lastLogin: new Date(),
       dob: dob,
       servers: [],
-      tokens: 500, // Give 500 tokens on registration
-      firstName: firstName,
-      lastName: lastName
+      tokens: 500 // Give 500 tokens on registration
     };
     
     try {
@@ -153,9 +151,7 @@ export async function registerUser(email: string, password: string, username: st
       await setDoc(doc(db, 'pterodactyl_users', pterodactylId), {
         userId: userCredential.user.uid,
         email,
-        username,
-        firstName: 'DiscordAI',
-        lastName: 'Bot'
+        username
       });
 
     } catch (error) {
