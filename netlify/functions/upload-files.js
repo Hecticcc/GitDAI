@@ -142,10 +142,11 @@ const handler = async (event, context) => {
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/api\/?$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
       
-      // Create form data with the file content
+      // Create form data using form-data package
+      const FormData = await import('form-data');
       const formData = new FormData();
-      const blob = new Blob([content], { type: 'text/plain' });
-      formData.append('files', blob, path);
+      const buffer = Buffer.from(content);
+      formData.append('files', buffer, path);
 
       log('Content Details', {
         fileRequestId,
@@ -163,8 +164,7 @@ const handler = async (event, context) => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-          'X-Request-ID': fileRequestId
+          'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`
         },
         body: formData
       });
