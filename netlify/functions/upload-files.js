@@ -1,4 +1,5 @@
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const FormData = require('form-data');
 
 // Enhanced file upload handler for Pterodactyl API with comprehensive debugging
 function createLogger() {
@@ -136,13 +137,16 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
-
-      // Create FormData with the file content
-      const formData = new FormData();
-      formData.append('files', Buffer.from(content), path);
-
+      
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
+
+      // Create form-data instance
+      const form = new FormData();
+      form.append('files', Buffer.from(content), {
+        filename: path,
+        contentType: 'application/octet-stream'
+      });
 
       log('Content Details', {
         fileRequestId,
@@ -154,10 +158,11 @@ const handler = async (event, context) => {
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
+          ...form.getHeaders(),
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
           'Accept': 'application/json'
         },
-        body: formData
+        body: form
       });
 
       const duration = Date.now() - uploadStartTime;
