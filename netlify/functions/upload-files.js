@@ -136,26 +136,28 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
-      
-      // Ensure clean URL construction
+
+      // Create FormData with the file content
+      const formData = new FormData();
+      formData.append('files', Buffer.from(content), path);
+
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/contents`;
+      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
 
       log('Content Details', {
         fileRequestId,
         contentLength: content.length,
         path,
-        contentType: 'application/json'
+        contentType: 'multipart/form-data'
       });
 
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
-          'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify(content)
+        body: formData
       });
 
       const duration = Date.now() - uploadStartTime;
