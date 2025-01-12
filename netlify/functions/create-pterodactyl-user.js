@@ -236,15 +236,15 @@ const handler = async (event, context) => {
 
     // Create user
     console.log('Creating User:', {
-      requestUrl: `${baseUrl}/api/application/users`,
+      requestUrl: `${baseUrl}/application/users`,
       method: 'POST'
     });
     
     const requestBody = {
       email,
       username,
-      first_name: firstName.trim(),
-      last_name: lastName.trim(),
+      first_name: firstName,
+      last_name: lastName,
       password,
       root_admin: false,
       language: 'en'
@@ -265,17 +265,13 @@ const handler = async (event, context) => {
     const createController = new AbortController();
     const createTimeout = setTimeout(() => createController.abort(), 30000);
 
-    const createUserUrl = `${baseUrl}/application/users`;
-    console.log('Creating user at:', createUserUrl);
-
     const response = await fetch(`${baseUrl}/application/users`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${process.env.PTERODACTYL_API_KEY.trim()}`,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'User-Agent': 'DiscordAI-Bot/1.0',
-        'Cache-Control': 'no-cache'
+        'User-Agent': 'DiscordAI-Bot/1.0'
       },
       body: JSON.stringify(requestBody),
       signal: createController.signal
