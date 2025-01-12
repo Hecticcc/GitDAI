@@ -201,14 +201,14 @@ const handler = async (event, context) => {
     const serverData = {
       name: requestData.name,
       user: Number(process.env.PTERODACTYL_USER_ID),
-      egg: 16,
+      egg: 15,
       docker_image: "ghcr.io/pterodactyl/yolks:nodejs_18",
       startup: "node {{SERVER_SCRIPT}}",
       environment: {
         SERVER_SCRIPT: "bot.js",
         DISCORD_TOKEN: "{{DISCORD_TOKEN}}",
         STARTUP_FILE: "bot.js",
-        REPO_URL: "https://github.com/discordjs/guide"
+        REPO_URL: ""
       },
       limits: requestData.limits || {
         memory: 512,
