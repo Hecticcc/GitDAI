@@ -41,7 +41,7 @@ interface UserData {
   email: string;
   username: string;
   name: string;
-  pterodactylId: string;
+  pterodactylId: number | string;
   lastLogin?: Timestamp;
   createdAt: Timestamp;
   dob: string;
@@ -205,7 +205,7 @@ export async function registerUser(email: string, password: string, username: st
       email: email.toLowerCase(),
       username: username.toLowerCase(),
       name: username,
-      pterodactylId,
+      pterodactylId: String(pterodactylId), // Convert to string to ensure consistent type
       createdAt: Timestamp.now(),
       lastLogin: Timestamp.now(),
       dob,
@@ -216,7 +216,11 @@ export async function registerUser(email: string, password: string, username: st
     try {
       // Create user document after authentication
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, userData);
+      await setDoc(userRef, {
+        ...userData,
+        createdAt: Timestamp.now(),
+        lastLogin: Timestamp.now()
+      });
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -225,12 +229,13 @@ export async function registerUser(email: string, password: string, username: st
       }
       
       // Also create a reference by pterodactyl ID for easy lookup
-      const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
+      const pterodactylRef = doc(db, 'pterodactyl_users', String(pterodactylId));
       await setDoc(pterodactylRef, {
         userId: userCredential.user.uid,
         email,
         username,
-        createdAt: Timestamp.now()
+        createdAt: Timestamp.now(),
+        pterodactylId: String(pterodactylId)
       });
 
       // Verify pterodactyl mapping was created
@@ -267,7 +272,7 @@ export async function loginUser(email: string, password: string, rememberMe: boo
     // Update last login
     await setDoc(doc(db, 'users', userCredential.user.uid), {
       lastLogin: Timestamp.fromDate(new Date()),
-      updatedAt: Timestamp.fromDate(new Date())
+      updatedAt: Timestamp.now()
     }, { merge: true });
     
     if (rememberMe) {
