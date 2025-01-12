@@ -124,6 +124,9 @@ async function checkExistingEmail(email: string): Promise<boolean> {
 
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
+    // Create user document reference first
+    const userRef = doc(collection(db, 'users'));
+
     // Check for existing username in Firebase
     const usernameExists = await checkExistingUsername(username);
     if (usernameExists) {
@@ -173,7 +176,7 @@ export async function registerUser(email: string, password: string, username: st
     
     // Store additional user data in Firestore
     const userData: UserData = {
-      id: userCredential.user.uid,
+      id: userRef.id,
       email: email.toLowerCase(),
       username: username.toLowerCase(),
       name: username,
@@ -187,8 +190,7 @@ export async function registerUser(email: string, password: string, username: st
     
     try {
       // Create user document with merge option to ensure it's created
-      const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, userData);
+      await setDoc(userRef, userData, { merge: true });
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);
@@ -199,7 +201,7 @@ export async function registerUser(email: string, password: string, username: st
       // Also create a reference by pterodactyl ID for easy lookup
       const pterodactylRef = doc(db, 'pterodactyl_users', pterodactylId);
       await setDoc(pterodactylRef, {
-        userId: userCredential.user.uid,
+        userId: userRef.id,
         email,
         username,
         createdAt: Timestamp.fromDate(new Date())

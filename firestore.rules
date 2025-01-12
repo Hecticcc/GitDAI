@@ -2,43 +2,43 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to validate token operations
-    function isValidTokenOperation() {
-      let oldTokens = resource.data.tokens;
-      let newTokens = request.resource.data.tokens;
-      // Only allow decreasing tokens or setting initial tokens to 500
-      return (oldTokens == null && newTokens == 500) || 
-             (oldTokens != null && newTokens < oldTokens);
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isValidNewUser() {
+      let data = request.resource.data;
+      return data.keys().hasAll(['email', 'username', 'createdAt', 'tokens']) &&
+             data.tokens == 500 && // Initial tokens
+             data.email is string &&
+             data.username is string;
     }
 
-    // Allow authenticated users to read/write their own data
+    // Users collection
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow create: if request.auth != null && 
-                   request.auth.uid == userId && 
-                   request.resource.data.tokens == 500;
-      allow update: if request.auth != null && 
-                   request.auth.uid == userId && 
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidNewUser();
+      allow update: if isOwner(userId) && 
                    (
-                     // Allow token updates only if they follow the rules
-                     isValidTokenOperation() ||
-                     // Allow updating other fields without changing tokens
-                     request.resource.data.tokens == resource.data.tokens
+                     // Allow updating lastLogin and other fields
+                     request.resource.data.diff(resource.data).affectedKeys()
+                       .hasAny(['lastLogin', 'updatedAt']) ||
+                     // For token updates, ensure they can only decrease
+                     request.resource.data.tokens < resource.data.tokens
                    );
     }
     
-    // Allow authenticated users to read/write pterodactyl user mappings
+    // Pterodactyl user mappings
     match /pterodactyl_users/{pterodactylId} {
-      allow create: if request.auth != null && 
+      allow read: if isAuthenticated() &&
+                 (resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() &&
                    request.resource.data.userId == request.auth.uid;
-      allow read: if request.auth != null && 
-                 (resource.data.userId == request.auth.uid || 
-                  get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
-    }
-    
-    // Default deny
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }
