@@ -1,4 +1,4 @@
-import fetch from 'node-fetch';
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 
 // Enhanced file upload handler for Pterodactyl API with comprehensive debugging
 function createLogger() {
@@ -341,4 +341,4 @@ const handler = async (event, context) => {
   }
 };
 
-export { handler };
+exports.handler = handler;
