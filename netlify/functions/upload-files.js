@@ -137,35 +137,18 @@ const handler = async (event, context) => {
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
       
-      // Extract the actual content if it's wrapped in a JSON object
-      let fileContent = content;
-      try {
-        if (typeof content === 'string' && content.startsWith('{') && content.endsWith('}')) {
-          const parsed = JSON.parse(content);
-          if (parsed.content) {
-            fileContent = parsed.content;
-          }
-        }
-      } catch (error) {
-        // If parsing fails, use the original content
-        log('Content Parse Warning', {
-          error: error.message,
-          usingOriginal: true
-        }, 'warn');
-      }
-      
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/client/servers/${serverId}/files/write`;
       
       // Prepare the file content
       const fileData = {
         file: path,
-        content: fileContent
+        content: content
       };
 
       log('Content Details', {
         fileRequestId,
-        contentLength: fileContent.length,
+        contentLength: content.length,
         path,
         contentType: 'text/plain'
       });
@@ -173,7 +156,7 @@ const handler = async (event, context) => {
       log('Request Body', {
         fileRequestId,
         path,
-        contentLength: fileContent.length
+        contentLength: content.length
       });
 
       const response = await fetch(apiUrl, {
