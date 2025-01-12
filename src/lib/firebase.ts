@@ -110,6 +110,10 @@ export async function createPterodactylUser(email: string, password: string, use
 
 async function checkPterodactylUser(email: string, username?: string): Promise<{emailExists: boolean, usernameExists: boolean}> {
   try {
+    if (!email) {
+      throw new Error('Email is required');
+    }
+
     const response = await fetch('/.netlify/functions/create-pterodactyl-user', {
       method: 'POST',
       headers: {
@@ -122,18 +126,25 @@ async function checkPterodactylUser(email: string, username?: string): Promise<{
       })
     });
 
-    const data = await response.json();
+    let data;
+    try {
+      const text = await response.text();
+      data = text ? JSON.parse(text) : {};
+    } catch (error) {
+      console.error('Failed to parse response:', error);
+      data = {};
+    }
     
     return {
       emailExists: !response.ok && (
         response.status === 409 || 
-        data.error?.toLowerCase().includes('email already exists') ||
-        data.error?.toLowerCase().includes('email is already taken')
+        data?.error?.toLowerCase?.()?.includes('email already exists') ||
+        data?.error?.toLowerCase?.()?.includes('email is already taken')
       ),
       usernameExists: !response.ok && (
         response.status === 409 ||
-        data.error?.toLowerCase().includes('username already exists') ||
-        data.error?.toLowerCase().includes('username is already taken')
+        data?.error?.toLowerCase?.()?.includes('username already exists') ||
+        data?.error?.toLowerCase?.()?.includes('username is already taken')
       )
     };
   } catch (error) {

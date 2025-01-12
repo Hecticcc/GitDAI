@@ -90,6 +90,15 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
 
   return (
     <div className="w-full max-w-md mx-auto">
+      <div className="flex justify-center mb-8">
+        <img 
+          src="https://imgur.com/EvGczt2.png" 
+          alt="Discord Bot Builder Logo" 
+          width="225" 
+          height="125"
+          className="rounded-lg shadow-lg"
+        />
+      </div>
       <div className="bg-[#36393F] rounded-lg shadow-lg p-8">
         <h2 className="text-2xl font-bold text-center mb-6">
           {isLogin ? 'Login' : 'Create Account'}
