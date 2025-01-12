@@ -208,7 +208,10 @@ const handler = async (event, context) => {
         SERVER_SCRIPT: "bot.js",
         DISCORD_TOKEN: "{{DISCORD_TOKEN}}",
         STARTUP_FILE: "bot.js",
-        REPO_URL: ""
+        REPO_URL: "",
+        USER_UPLOAD: "1",
+        AUTO_UPDATE: "0",
+        MAIN_FILE: "bot.js"
       },
       limits: requestData.limits || {
         memory: 512,
