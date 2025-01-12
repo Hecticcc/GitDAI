@@ -139,7 +139,7 @@ const handler = async (event, context) => {
       const uploadStartTime = Date.now();
       
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/api/client/servers/${serverId}/files/upload`;
+      const apiUrl = `${baseUrl}/client/servers/${serverId}/files/upload`;
 
       // Create form-data instance
       const form = new FormData();
