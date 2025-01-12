@@ -136,47 +136,30 @@ const handler = async (event, context) => {
       const { path, content } = file;
       const fileRequestId = `${requestId}-file-${index}`;
       const uploadStartTime = Date.now();
-      
-      // Parse content if it's a JSON string
-      let fileContent = content;
-      try {
-        const parsedContent = JSON.parse(content);
-        if (parsedContent.content) {
-          fileContent = parsedContent.content;
-        }
-      } catch (e) {
-        // Content is not JSON, use as is
-      }
 
       const baseUrl = env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       const apiUrl = `${baseUrl}/client/servers/${serverId}/files/write`;
       
+      // Ensure content is sent as plain text
       const fileData = {
-        file: path,
-        content: fileContent
+        raw: content
       };
 
       log('Content Details', {
         fileRequestId,
-        contentLength: fileContent.length,
+        contentLength: content.length,
         path,
         contentType: 'text/plain'
       });
 
-      log('Request Body', {
-        fileRequestId,
-        path,
-        contentLength: fileContent.length
-      });
-
       const response = await fetch(apiUrl, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Authorization': `Bearer ${env.PTERODACTYL_CLIENT_API_KEY}`,
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify(fileData)
+        body: content
       });
 
       const duration = Date.now() - uploadStartTime;
