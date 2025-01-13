@@ -95,6 +95,13 @@ function debug(info: DebugInfo) {
 export async function getChatResponse(messages: ChatCompletionMessageParam[], model: ModelType = 'gpt-3.5-turbo'): Promise<ChatResponse> {
   try {
     debug({ stage: 'Request Messages', data: messages });
+    
+    // Calculate potential token cost first
+    const lastMessage = messages[messages.length - 1];
+    const estimatedTokens = lastMessage.content.length / 4; // Rough estimate
+    const estimatedCost = calculateTokenCost(lastMessage.content, model === 'gpt-4');
+    
+    debug({ stage: 'Estimated Cost', data: estimatedCost });
 
     // Validate API key
     if (!import.meta.env.VITE_OPENAI_API_KEY?.startsWith('sk-')) {
@@ -143,11 +150,14 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
     const data = await response.json();
     debug({ stage: 'API Response', data: data });
     const content = data.choices[0].message.content;
-    debug({ stage: 'Response Content', data: content });
-
-    // Extract code block and calculate token cost
     const codeBlock = extractCodeBlock(content);
-    const tokenCost = codeBlock ? calculateTokenCost(codeBlock, model === 'gpt-4') : undefined;
+    
+    // Calculate actual token cost based on response
+    const actualTokens = content.length / 4; // Rough estimate
+    const tokenCost = {
+      ...estimatedCost,
+      totalCost: Math.max(estimatedCost.totalCost, actualTokens)
+    };
 
     debug({ stage: 'Token Cost', data: tokenCost });
 

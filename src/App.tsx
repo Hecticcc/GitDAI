@@ -98,6 +98,23 @@ function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || isGenerating) return;
+
+    // Calculate estimated token cost first
+    const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
+    const estimatedTokens = input.length / 4; // Rough estimate
+    const estimatedCost = Math.ceil(estimatedTokens * (useEnhancedAI ? 2.5 : 1));
+
+    // Check if user has enough tokens for estimated cost
+    if (userData && userData.tokens < estimatedCost) {
+      setMessages(prev => [...prev, {
+        type: 'system',
+        content: `Insufficient tokens. This operation requires approximately ${estimatedCost} tokens${
+          useEnhancedAI ? ' (including 2.5x Enhanced AI multiplier)' : ''
+        }, but you only have ${userData.tokens} tokens available.`,
+        isSolution: true
+      }]);
+      return;
+    }
     
     const userMessage = { 
       type: 'user' as const, 
@@ -109,28 +126,24 @@ function App() {
     setIsGenerating(true);
     
     try {
-      const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
       const { content: response, tokenCost } = await getChatResponse(formatMessages([...messages, userMessage]), model);
-
-      // Check if user has enough tokens
-      if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
-        setMessages(prev => [...prev, {
-          type: 'system',
-          content: `Insufficient tokens. This operation requires ${tokenCost.totalCost} tokens${
-            tokenCost.isEnhancedAI ? ' (including 2.5x Enhanced AI multiplier)' : ''
-          }, but you only have ${userData.tokens} tokens available.`,
-          isSolution: true
-        }]);
-        return;
-      }
 
       const codeBlock = extractCodeBlock(response);
       
       // If we used tokens, update the user's token count
       if (tokenCost && userData) {
         const newTokens = userData.tokens - tokenCost.totalCost;
-        await updateUserTokens(userData.id, newTokens);
-        setUserData(prev => prev ? { ...prev, tokens: newTokens } : null);
+        try {
+          await updateUserTokens(userData.id, newTokens);
+          setUserData(prev => prev ? { ...prev, tokens: newTokens } : null);
+        } catch (error) {
+          console.error('Failed to update tokens:', error);
+          setMessages(prev => [...prev, {
+            type: 'system',
+            content: 'Failed to update token count. Please refresh the page.',
+            isSolution: true
+          }]);
+        }
       }
       
       if (codeBlock) {
