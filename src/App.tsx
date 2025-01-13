@@ -1,4 +1,7 @@
 import React from 'react';
+import { User } from '@firebase/auth';
+import type { UserData } from './lib/firebase';
+import { Code } from 'lucide-react';
 import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket, LogOut, Save, Settings } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
@@ -20,6 +23,7 @@ interface ChatMessage {
   type: 'user' | 'system';
   content: string;
   isSolution?: boolean;
+  isInfo?: boolean;
 }
 
 interface CodeVersion {
@@ -102,96 +106,134 @@ function App() {
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
   const [showProjects, setShowProjects] = React.useState(false);
   const [showResetConfirm, setShowResetConfirm] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string>();
   const [serverStartTime, setServerStartTime] = React.useState<number | null>(null);
   const [showDashboard, setShowDashboard] = React.useState(false);
   const chatRef = React.useRef<HTMLDivElement>(null);
 
-  // Handle dashboard open
-  const handleDashboardOpen = () => {
-    if (!userData) {
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: 'Please log in to view your dashboard',
-        isSolution: true
-      }]);
-      return;
+  // Get server duration based on user role
+  const getServerDuration = (role: string) => {
+    switch (role?.toLowerCase()) {
+      case 'premium':
+        return 7200000; // 2 hours in milliseconds
+      default:
+        return 1800000; // 30 minutes in milliseconds
     }
-    setShowDashboard(true);
   };
 
-  // Handle projects open
-  const handleProjectsOpen = () => {
-    if (!userData) {
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: 'Please log in to view your projects',
-        isSolution: true
-      }]);
-      return;
-    }
-    setShowProjects(true);
-  };
-
-  // Handle server deployment
-  const handleDeploy = async () => {
-    if (!user || !userData) {
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: 'Please log in to deploy a server',
-        isSolution: true
-      }]);
-      return;
-    }
-
-    if (!botToken) {
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: 'Please set your bot token before deploying',
-        isSolution: true
-      }]);
-      return;
-    }
-
-    try {
-      setIsCreatingServer(true);
-      setShowDeployment(true);
-      setDeploymentStatus('creating');
-      setDeploymentError(undefined);
-
-      // Test server creation first
-      await testCreateServer();
-
-      // Create the actual server
-      const serverResponse = await createPterodactylServer(
-        `discord-bot-${Date.now()}`,
-        'Discord bot server',
-        userData.pterodactylId
-      );
-
-      if (!serverResponse?.data?.attributes?.identifier) {
-        throw new Error('Failed to get server identifier');
-      }
-
-      const serverId = serverResponse.data.attributes.identifier;
-
-      // Update user's servers list
-      await updateUserServers(user.uid, [...(userData.servers || []), serverId]);
+  // Handle server expiration
+  const handleServerExpire = async () => {
+    if (user && userData?.servers?.length > 0) {
+      await updateUserServers(user.uid, []);
       setUserData(prev => prev ? {
         ...prev,
-        servers: [...(prev.servers || []), serverId],
-        serverStartTime: Date.now()
+        servers: [],
+        serverStartTime: null
       } : null);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        content: 'Your server has expired and been removed.',
+        isSolution: true
+      }]);
+    }
+  };
 
-      setDeploymentStatus('installing');
-      await waitForInstallation(serverId);
-      setDeploymentStatus('complete');
+  React.useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
+  }, [messages, currentCode]);
 
+  // Initialize server start time from user data
+  React.useEffect(() => {
+    if (userData?.serverStartTime) {
+      setServerStartTime(userData.serverStartTime);
+    }
+  }, [userData]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading || isGenerating) return;
+    
+    const userMessage = { 
+      type: 'user' as const, 
+      content: input
+    };
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
+    setIsGenerating(true);
+
+    try {
+      const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
+      const { content: response, tokenCost } = await getChatResponse(formatMessages([...messages, userMessage]), model);
+
+      // Check if user has enough tokens
+      if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: 'Insufficient tokens available',
+          isInfo: true
+        }]);
+        return;
+      }
+    
+      const codeBlock = extractCodeBlock(response);
+
+      // If we used tokens, update the user's token count
+      if (tokenCost && userData) {
+        const newTokens = userData.tokens - tokenCost.totalCost;
+        try {
+          await updateUserTokens(userData.id, newTokens);
+          setUserData(prev => prev ? { ...prev, tokens: newTokens } : null);
+        } catch (error) {}
+      }
+      
+      if (codeBlock) {
+        // Apply bot token to the new code if available
+        const codeWithToken = botToken ? updateBotToken(codeBlock, botToken) : codeBlock;
+        const newVersion: CodeVersion = {
+          code: codeWithToken,
+          timestamp: new Date(),
+          description: input.slice(0, 50) + (input.length > 50 ? '...' : '')
+        };
+        setCodeHistory(prev => [...prev.slice(0, historyIndex + 1), newVersion]);
+        setHistoryIndex(prev => prev + 1);
+        setCurrentCode(codeWithToken);
+        // Only show the explanation part before the code block
+        const explanation = response.split('```')[0].trim(); 
+        if (explanation.toLowerCase().startsWith('error:') || explanation.toLowerCase().startsWith('error detected:')) {
+          setMessages(prev => [...prev, { 
+            type: 'system', 
+            content: explanation,
+            isSolution: true 
+          }]);
+        } else {
+          setMessages(prev => [...prev, { type: 'system', content: explanation }]);
+        }
+      } else {
+        if (response.toLowerCase().startsWith('error:') || response.toLowerCase().startsWith('error detected:')) {
+          setMessages(prev => [...prev, { 
+            type: 'system', 
+            content: response,
+            isSolution: true 
+          }]);
+        } else {
+          setMessages(prev => [...prev, { type: 'system', content: response }]);
+        }
+      }
     } catch (error) {
-      console.error('Deployment error:', error);
-      setDeploymentError(error instanceof Error ? error.message : 'Failed to deploy server');
-      setDeploymentStatus('error');
+      setMessages(prev => [...prev, { type: 'system', content: 'Sorry, there was an error generating a response. Please try again.' }]);
+      if (error instanceof Error && error.message.includes('API key')) {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: 'Please check your OpenAI API key is correctly set in the .env file.',
+          isSolution: true
+        }]);
+      }
     } finally {
-      setIsCreatingServer(false);
+      setIsLoading(false);
+      setIsGenerating(false);
     }
   };
 
@@ -205,6 +247,17 @@ function App() {
         content: `Rolled back to version from ${previousVersion.timestamp.toLocaleString()}`
       }]);
     }
+  };
+
+  const handleVersionSelect = (index: number) => {
+    const version = codeHistory[index];
+    setHistoryIndex(index);
+    setCurrentCode(version.code);
+    setShowHistory(false);
+    setMessages(prev => [...prev, {
+      type: 'system',
+      content: `Switched to version from ${version.timestamp.toLocaleString()}: ${version.description}`
+    }]);
   };
 
   const handleTokenSave = () => {
@@ -271,145 +324,6 @@ ${messages
       });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading || isGenerating) return;
-    
-    const userMessage = { 
-      type: 'user' as const, 
-      content: input
-    };
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsLoading(true);
-    setIsGenerating(true);
-
-    try {
-      const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
-      const { content: response, tokenCost } = await getChatResponse(formatMessages([...messages, userMessage]), model);
-
-      // Check if user has enough tokens
-      if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
-        setMessages(prev => [...prev, {
-          type: 'system',
-          content: 'Insufficient tokens available',
-          isInfo: true
-        }]);
-        return;
-      }
-    
-      const codeBlock = extractCodeBlock(response);
-
-      // If we used tokens, update the user's token count
-      if (tokenCost && userData) {
-        const newTokens = userData.tokens - tokenCost.totalCost;
-        try {
-          await updateUserTokens(userData.id, newTokens);
-          setUserData(prev => prev ? { ...prev, tokens: newTokens } : null);
-        } catch (error) {}
-      }
-      
-      if (codeBlock) {
-        // Apply bot token to the new code if available
-        const codeWithToken = botToken ? updateBotToken(codeBlock, botToken) : codeBlock;
-        const newVersion: CodeVersion = {
-          code: codeWithToken,
-          timestamp: new Date(),
-          description: input.slice(0, 50) + (input.length > 50 ? '...' : '')
-        };
-        setCodeHistory(prev => [...prev.slice(0, historyIndex + 1), newVersion]);
-        setHistoryIndex(prev => prev + 1);
-        setCurrentCode(codeWithToken);
-        // Only show the explanation part before the code block
-        const explanation = response.split('```')[0].trim(); 
-        if (explanation.toLowerCase().startsWith('error:') || explanation.toLowerCase().startsWith('error detected:')) {
-          setMessages(prev => [...prev, { 
-            type: 'system', 
-            content: explanation,
-            isSolution: true 
-          }]);
-        } else {
-          setMessages(prev => [...prev, { type: 'system', content: explanation }]);
-        }
-      } else {
-        console.warn('No code block found, showing full response');
-        if (response.toLowerCase().startsWith('error:') || response.toLowerCase().startsWith('error detected:')) {
-          setMessages(prev => [...prev, { 
-            type: 'system', 
-            content: response,
-            isSolution: true 
-          }]);
-        } else {
-          setMessages(prev => [...prev, { type: 'system', content: response }]);
-        }
-      }
-    } catch (error) {
-      setMessages(prev => [...prev, { type: 'system', content: 'Sorry, there was an error generating a response. Please try again.' }]);
-      if (error instanceof Error && error.message.includes('API key')) {
-        setMessages(prev => [...prev, {
-          type: 'system',
-          content: 'Please check your OpenAI API key is correctly set in the .env file.',
-          isSolution: true
-        }]);
-      }
-    } finally {
-      setIsLoading(false);
-      setIsGenerating(false);
-    }
-  };
-  // Get server duration based on user role
-  const getServerDuration = (role: string) => {
-    switch (role?.toLowerCase()) {
-      case 'premium':
-        return 240000; // 4 minutes for testing
-      default:
-        return 120000; // 2 minutes for testing
-    }
-  };
-
-  // Handle server expiration
-  const handleServerExpire = async () => {
-    if (user && userData?.servers?.length > 0) {
-      try {
-        // Update user's servers list
-        await updateUserServers(user.uid, []);
-        setUserData(prev => prev ? {
-          ...prev,
-          servers: [],
-          serverStartTime: null
-        } : null);
-        
-        setMessages(prev => [...prev, {
-          type: 'system',
-          content: 'Your server has expired and been removed.',
-          isSolution: true
-        }]);
-      } catch (error: any) {
-        console.error('Error handling server expiration:', error);
-        setMessages(prev => [...prev, {
-          type: 'system',
-          content: 'Failed to properly clean up expired server. Please contact support.',
-          isSolution: true
-        }]);
-      }
-    }
-  };
-
-  React.useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
-  }, [messages, currentCode]);
-
-  // Initialize server start time from user data
-  React.useEffect(() => {
-    if (userData?.serverStartTime) {
-      setServerStartTime(userData.serverStartTime);
-    }
-  }, [userData]);
-
-  // Rest of the code remains the same...
-
   return (
     <div className="min-h-screen bg-[#2C2F33] text-gray-100">
       {/* Auth Check */}
@@ -431,309 +345,354 @@ ${messages
           />
         </div>
       ) : (
-        <>
-          {/* Header */}
-          <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
-            <div className="max-w-7xl mx-auto flex items-center justify-between h-[85px]">
-              <div className="flex items-center px-6">
-                <img
-                  src="https://imgur.com/1YoQljt.png"
-                  alt="Discord Bot Builder"
-                  className="w-[85px] h-[65px] object-contain"
-                />
-              </div>
-              <nav className="flex items-center px-6">
-                <div className="flex items-center space-x-2 p-1 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5">
-                  <button
-                    onClick={() => setShowHistory(true)}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-                    title="View code history"
-                  >
-                    <History className="w-5 h-5" />
-                    <span>History</span>
-                  </button>
-                  <button
-                    title={isSaving ? 'Saving project...' : 'Save current project'}
-                    onClick={() => setShowSaveDialog(true)}
-                    disabled={isSaving}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
-                      isSaving ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'hover:bg-[#7289DA]/10'
-                    }`}
-                  >
-                    <Save className={`w-5 h-5 ${isSaving ? 'animate-pulse' : ''}`} />
-                    <span>{isSaving ? 'Saving...' : 'Save Project'}</span>
-                  </button>
-                  <button
-                    title="View your projects"
-                    onClick={handleProjectsOpen}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-                  >
-                    <Bot className="w-5 h-5" />
-                    <span>My Projects</span>
-                  </button>
-                  <button
-                    title="Open dashboard"
-                    onClick={handleDashboardOpen}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-                  >
-                    <Settings className="w-5 h-5" />
-                    <span>Dashboard</span>
-                  </button>
-                  <button 
-                    title={historyIndex === 0 ? 'No previous versions available' : 'Rollback to previous version'}
-                    onClick={handleRollback}
-                    disabled={historyIndex === 0}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
-                      historyIndex === 0 
-                        ? 'text-gray-500 cursor-not-allowed' 
-                        : 'hover:bg-[#7289DA]/10'
-                    }`}
-                    title={historyIndex === 0 ? 'No previous versions available' : 'Rollback to previous version'}
-                  >
-                    <Undo className="w-5 h-5" />
-                    <span>Rollback</span>
-                  </button>
-                  <button 
-                    title="Download bot code"
-                    onClick={handleDownload}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-                  >
-                    <Download className="w-5 h-5" />
-                    <span>Download</span>
-                  </button>
-                  <button
-                    onClick={handleDeploy}
-                    disabled={isCreatingServer || !botToken}
-                    title={!botToken ? 'Set bot token first' : isCreatingServer ? 'Deploying...' : 'Deploy bot server'}
-                    className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
-                      isCreatingServer || !botToken
-                        ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                        : 'hover:bg-[#7289DA]/10'
-                    }`}
-                  >
-                    <Rocket className={`w-5 h-5 ${isCreatingServer ? 'animate-pulse' : ''}`} />
-                    <span>{isCreatingServer ? 'Deploying...' : 'Deploy'}</span>
-                  </button>
-                  <button
-                    title="Logout"
-                    onClick={() => logoutUser()}
-                    className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
-                  >
-                    <LogOut className="w-5 h-5" />
-                    <span>Logout</span>
-                  </button>
-                </div>
-              </nav>
+      <>
+      {/* Header */}
+      <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto flex items-center justify-between h-[85px]">
+          <div className="flex items-center px-6">
+            <img
+              src="https://imgur.com/1YoQljt.png"
+              alt="Discord Bot Builder"
+              className="w-[85px] h-[65px] object-contain"
+            />
+          </div>
+          <nav className="flex items-center px-6">
+            <div className="flex items-center space-x-2 p-1 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+            >
+              <History className="w-5 h-5" />
+              <span>History</span>
+            </button>
+            <button
+              onClick={() => setShowSaveDialog(true)}
+              disabled={isSaving}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
+                isSaving ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'hover:bg-[#7289DA]/10'
+              }`}
+            >
+              <Save className={`w-5 h-5 ${isSaving ? 'animate-pulse' : ''}`} />
+              <span>{isSaving ? 'Saving...' : 'Save Project'}</span>
+            </button>
+            <button
+              onClick={() => setShowProjects(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+            >
+              <Bot className="w-5 h-5" />
+              <span>My Projects</span>
+            </button>
+            <button
+              onClick={() => setShowDashboard(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+            >
+              <Settings className="w-5 h-5" />
+              <span>Dashboard</span>
+            </button>
+            <button 
+              onClick={handleRollback}
+              disabled={historyIndex === 0}
+              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
+                historyIndex === 0 
+                  ? 'text-gray-500 cursor-not-allowed' 
+                  : 'hover:bg-[#7289DA]/10'
+              }`}
+              title={historyIndex === 0 ? 'No previous versions available' : 'Rollback to previous version'}
+            >
+              <Undo className="w-5 h-5" />
+              <span>Rollback</span>
+            </button>
+            <button 
+              onClick={handleDownload}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+            >
+              <Download className="w-5 h-5" />
+              <span>Download</span>
+            </button>
+            <button
+              onClick={() => logoutUser()}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
+            >
+              <LogOut className="w-5 h-5" />
+              <span>Logout</span>
+            </button>
             </div>
-          </header>
-          
-          {/* Main Content */}
-          <main className="max-w-[95%] mx-auto p-4 flex flex-col lg:flex-row gap-6 h-[calc(100vh-85px)]">
-            {/* Chat Interface */}
-            <div className="w-full lg:w-[35%] flex flex-col bg-[#36393F] rounded-lg overflow-hidden">
-              <div 
-                ref={chatRef}
-                className="flex-1 overflow-y-auto p-4 space-y-4"
+          </nav>
+        </div>
+      </header>
+      
+      {/* Main Content */}
+      <main className="max-w-[95%] mx-auto p-4 flex flex-col lg:flex-row gap-6 h-[calc(100vh-85px)]">
+        {/* Chat Interface */}
+        <div className="w-full lg:w-[35%] flex flex-col bg-[#36393F] rounded-lg overflow-hidden">
+          <div 
+            ref={chatRef}
+            className="flex-1 overflow-y-auto p-4 space-y-4"
+          >
+            {messages.map((message, index) => (
+              <div
+                key={index}
+                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                {messages.map((message, index) => (
+                {message.isSolution ? (
+                  <div className="max-w-[80%]">
+                    <SolutionMessage message={message.content} />
+                  </div>
+                ) : message.isInfo ? (
+                  <div className="max-w-[80%]">
+                    <div className="bg-[#7289DA]/10 border border-[#7289DA]/20 rounded-lg p-4 flex items-start space-x-3">
+                      <div className="text-[#7289DA]">
+                        <MessageCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-[#7289DA] mb-1">Information</div>
+                        <div className="text-gray-100">{message.content}</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
                   <div
-                    key={index}
-                    className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`max-w-[80%] p-3 rounded-lg ${
+                      message.type === 'user'
+                        ? 'bg-[#7289DA] text-white'
+                        : 'bg-[#40444B] text-gray-100 whitespace-pre-wrap break-words'
+                    }`}
                   >
-                    {message.isSolution ? (
-                      <div className="max-w-[80%]">
-                        <SolutionMessage message={message.content} />
-                      </div>
-                    ) : message.isInfo ? (
-                      <div className="max-w-[80%]">
-                        <div className="bg-[#7289DA]/10 border border-[#7289DA]/20 rounded-lg p-4 flex items-start space-x-3">
-                          <div className="text-[#7289DA]">
-                            <MessageCircle className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-[#7289DA] mb-1">Information</div>
-                            <div className="text-gray-100">{message.content}</div>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        className={`max-w-[80%] p-3 rounded-lg ${
-                          message.type === 'user'
-                            ? 'bg-[#7289DA] text-white'
-                            : 'bg-[#40444B] text-gray-100 whitespace-pre-wrap break-words'
-                        }`}
-                      >
-                        {message.content}
-                        {message === messages[messages.length - 1] && message.type === 'system' && isGenerating && (
-                          <div className="mt-2">
-                            <LoadingDots />
-                          </div>
-                        )}
+                    {message.content}
+                    {message === messages[messages.length - 1] && message.type === 'system' && isGenerating && (
+                      <div className="mt-2">
+                        <LoadingDots />
                       </div>
                     )}
                   </div>
-                ))}
+                )}
               </div>
-              <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700">
-                <div className="space-y-4">
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSubmit(e);
-                      }
-                    }}
-                    placeholder="Describe your bot's features..."
-                    disabled={isLoading || isGenerating}
-                    className={`w-full bg-[#40444B] text-gray-100 rounded-lg px-4 py-3 min-h-[100px] resize-none focus:outline-none focus:ring-2 focus:ring-[#7289DA] ${
-                      (isLoading || isGenerating) ? 'cursor-not-allowed opacity-50' : ''
+            ))}
+          </div>
+          <form onSubmit={handleSubmit} className="p-4 border-t border-gray-700">
+            <div className="space-y-4">
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+                placeholder="Describe your bot's features..."
+                disabled={isLoading || isGenerating}
+                className={`w-full bg-[#40444B] text-gray-100 rounded-lg px-4 py-3 min-h-[100px] resize-none focus:outline-none focus:ring-2 focus:ring-[#7289DA] ${
+                  (isLoading || isGenerating) ? 'cursor-not-allowed opacity-50' : ''
+                }`}
+              />
+              <div className="flex items-center justify-between space-x-2">
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTokenInput(!showTokenInput)}
+                    className={`group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 ${
+                      isTokenSaved
+                        ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                        : 'bg-[#2F3136] hover:bg-[#40444B]'
                     }`}
-                  />
-                  <div className="flex items-center justify-between space-x-2">
-                    <div className="flex items-center space-x-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowTokenInput(!showTokenInput)}
-                        className={`group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 ${
-                          isTokenSaved
-                            ? 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                            : 'bg-[#2F3136] hover:bg-[#40444B]'
-                        }`}
-                      >
-                        <span>Bot Token</span>
-                        {isTokenSaved && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                          </span>
-                        )}
-                      </button>
-                      <button
-                        onClick={() => setUseEnhancedAI(prev => !prev)}
-                        className={`group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 bg-[#2F3136] ${
-                          useEnhancedAI
-                            ? 'text-yellow-300 hover:bg-[#40444B]'
-                            : 'text-gray-300 hover:bg-[#40444B]'
-                        }`}
-                      >
-                        <Sparkles className={`w-4 h-4 transition-all duration-300 ${
-                          useEnhancedAI ? 'animate-pulse' : ''
-                        }`} />
-                        <span className="font-medium">Enhanced AI</span>
-                        {useEnhancedAI && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
-                          </span>
-                        )}
-                      </button>
-                      {userData && (
-                        <div className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md bg-[#2F3136] hover:bg-[#40444B] transition-all duration-200">
-                          <span className="text-gray-300 font-medium">Tokens</span>
-                          <span className="px-2 py-0.5 bg-[#7289DA]/20 text-[#7289DA] rounded-md font-semibold">
-                            {userData.tokens}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      type="submit"
-                      className={`bg-[#7289DA] px-4 py-2 rounded-lg transition-colors ${
-                        (isLoading || isGenerating) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#677BC4]'
-                      }`}
-                      disabled={isLoading || isGenerating}
-                    >
-                      Send
-                    </button>
-                  </div>
-                  {showTokenInput && (
-                    <div className="mt-4 p-4 bg-[#2F3136] rounded-lg space-y-2">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-2">
-                          <label className="text-sm font-medium">Bot Token</label>
-                          {isTokenSaved && (
-                            <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 rounded-full">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-xs text-yellow-400">For testing only - Reset in production!</div>
-                      </div>
-                      <div className="flex space-x-2">
-                        <input
-                          type="password"
-                          value={botToken}
-                          onChange={(e) => setBotToken(e.target.value)}
-                          placeholder="Enter your bot token..."
-                          className="flex-1 bg-[#40444B] text-gray-100 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7289DA]"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleTokenSave}
-                          disabled={!botToken.trim()}
-                          className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                            botToken.trim()
-                              ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
-                              : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                          }`}
-                        >
-                          Save Token
-                        </button>
-                      </div>
+                  >
+                    <span>Bot Token</span>
+                    {isTokenSaved && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setUseEnhancedAI(prev => !prev)}
+                    className={`group relative flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md transition-all duration-200 bg-[#2F3136] ${
+                      useEnhancedAI
+                        ? 'text-yellow-300 hover:bg-[#40444B]'
+                        : 'text-gray-300 hover:bg-[#40444B]'
+                    }`}
+                  >
+                    <Sparkles className={`w-4 h-4 transition-all duration-300 ${
+                      useEnhancedAI ? 'animate-pulse' : ''
+                    }`} />
+                    <span className="font-medium">Enhanced AI</span>
+                    {useEnhancedAI && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-yellow-500"></span>
+                      </span>
+                    )}
+                  </button>
+                  {userData && (
+                    <div className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md bg-[#2F3136] hover:bg-[#40444B] transition-all duration-200">
+                      <span className="text-gray-300 font-medium">Tokens</span>
+                      <span className="px-2 py-0.5 bg-[#7289DA]/20 text-[#7289DA] rounded-md font-semibold">
+                        {userData.tokens}
+                      </span>
                     </div>
                   )}
                 </div>
-              </form>
+                <button
+                  type="submit"
+                  className={`bg-[#7289DA] px-4 py-2 rounded-lg transition-colors ${
+                    (isLoading || isGenerating) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#677BC4]'
+                  }`}
+                  disabled={isLoading || isGenerating}
+                >
+                  Send
+                </button>
+              </div>
+              {showTokenInput && (
+                <div className="mt-4 p-4 bg-[#2F3136] rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <label className="text-sm font-medium">Bot Token</label>
+                      {isTokenSaved && (
+                        <span className="px-2 py-0.5 text-xs font-medium bg-emerald-500/10 text-emerald-400 rounded-full">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-yellow-400">For testing only - Reset in production!</div>
+                  </div>
+                  <div className="flex space-x-2">
+                    <input
+                      type="password"
+                      value={botToken}
+                      onChange={(e) => setBotToken(e.target.value)}
+                      placeholder="Enter your bot token..."
+                      className="flex-1 bg-[#40444B] text-gray-100 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7289DA]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleTokenSave}
+                      disabled={!botToken.trim()}
+                      className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
+                        botToken.trim()
+                          ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                          : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                      }`}
+                    >
+                      Save Token
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
+          </form>
+        </div>
 
-            {/* Preview Panel */}
-            <div className="flex-1 bg-[#36393F] rounded-lg p-6 hidden lg:flex lg:flex-col min-w-0">
-              <div className="flex items-center space-x-2 mb-4">
-                <MessageCircle className="w-5 h-5 text-[#7289DA]" />
-                <h2 className="text-lg font-semibold">Bot Preview</h2>
-              </div>
-              <div className="space-y-6 flex-1 min-h-0">
-                <AnimatedCode code={currentCode} isLoading={isLoading} />
-              </div>
-            </div>
-          </main>
-          
-          {/* Dashboard Modal */}
-          {showDashboard && userData && (
-            <UserDashboard
-              isOpen={showDashboard}
-              onClose={() => setShowDashboard(false)}
-              userData={userData}
-              codeHistory={codeHistory}
+        {/* Preview Panel */}
+        <div className="flex-1 bg-[#36393F] rounded-lg p-6 hidden lg:flex lg:flex-col min-w-0">
+          <div className="flex items-center space-x-2 mb-4">
+            <MessageCircle className="w-5 h-5 text-[#7289DA]" />
+            <h2 className="text-lg font-semibold">Bot Preview</h2>
+          </div>
+          <div className="space-y-6 flex-1 min-h-0">
+            <AnimatedCode code={currentCode} isLoading={isLoading} />
+          </div>
+        </div>
+      </main>
+      
+      {/* Dashboard Modal */}
+      <UserDashboard
+        isOpen={showDashboard}
+        onClose={() => setShowDashboard(false)}
+        userData={userData!}
+        codeHistory={codeHistory}
+      />
+
+      {/* Project List */}
+      {showProjects && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-[#36393F] rounded-lg w-full max-w-4xl mx-4 p-6">
+            <ProjectList
+              userId={user.uid}
+              onSelect={(project) => {
+                setCurrentCode(project.code);
+                setShowProjects(false);
+              }}
+              onNew={() => {
+                setShowProjects(false);
+                setShowSaveDialog(true);
+              }}
+              onClose={() => setShowProjects(false)}
             />
-          )}
+          </div>
+        </div>
+      )}
 
-          {/* Project List */}
-          {showProjects && userData && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-              <div className="bg-[#36393F] rounded-lg w-full max-w-4xl mx-4 p-6">
-                <ProjectList
-                  userId={user.uid}
-                  onSelect={(project) => {
-                    setCurrentCode(project.code);
-                    setShowProjects(false);
-                  }}
-                  onNew={() => {
-                    setShowProjects(false);
-                    setShowSaveDialog(true);
-                  }}
-                  onClose={() => setShowProjects(false)}
-                />
-              </div>
-            </div>
-          )}
-        </>
+      {/* Save Project Dialog */}
+      <SaveProjectDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onSave={async (name, description) => {
+          try {
+            setIsSaving(true);
+            await createProject(user.uid, {
+              name,
+              description,
+              code: currentCode
+            });
+            setShowSaveDialog(false);
+            setMessages(prev => [...prev, {
+              type: 'system',
+              content: `Project "${name}" saved successfully!`
+            }]);
+          } catch (error) {
+            setMessages(prev => [...prev, {
+              type: 'system',
+              content: `Failed to save project: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isSolution: true
+            }]);
+          } finally {
+            setIsSaving(false);
+          }
+        }}
+        isSaving={isSaving}
+        error={saveError}
+      />
+
+      {/* Reset Confirm Dialog */}
+      <ResetConfirmDialog
+        isOpen={showResetConfirm}
+        onConfirm={() => {
+          const defaultCode = getDefaultCode();
+          setCurrentCode(defaultCode);
+          setCodeHistory([{
+            code: defaultCode,
+            timestamp: new Date(),
+            description: 'Reset to default code'
+          }]);
+          setHistoryIndex(0);
+          setMessages([{ 
+            type: 'system', 
+            content: 'Code has been reset to default.' 
+          }]);
+        }}
+        onClose={() => setShowResetConfirm(false)}
+      />
+
+      {/* Deployment Status */}
+      <DeploymentStatus
+        isVisible={showDeployment}
+        currentStep={deploymentStatus}
+        error={deploymentError}
+        serverDetails={userData ? {
+          name: `discord-bot-${Date.now()}`,
+          username: userData.username
+        } : undefined}
+        onClose={() => {
+          setShowDeployment(false);
+          setDeploymentStatus('creating');
+          setDeploymentError(undefined);
+        }}
+      />
+      </>
       )}
     </div>
   );
 }
-      
+
 export default App;

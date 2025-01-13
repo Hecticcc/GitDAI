@@ -6,20 +6,22 @@ interface SaveProjectDialogProps {
   onClose: () => void;
   onSave: (name: string, description: string) => void;
   isSaving: boolean;
+  error?: string;
 }
 
-export function SaveProjectDialog({ isOpen, onClose, onSave, isSaving }: SaveProjectDialogProps) {
+export function SaveProjectDialog({ isOpen, onClose, onSave, isSaving, error }: SaveProjectDialogProps) {
   const [name, setName] = React.useState('');
   const [description, setDescription] = React.useState('');
-  const [error, setError] = React.useState('');
+  const [validationError, setValidationError] = React.useState('');
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setValidationError('');
     
     if (!name.trim()) {
-      setError('Project name is required');
+      setValidationError('Project name is required');
       return;
     }
 
@@ -40,9 +42,14 @@ export function SaveProjectDialog({ isOpen, onClose, onSave, isSaving }: SavePro
         </div>
         
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {validationError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+              {validationError}
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-              {error}
+              Failed to save project: {error}
             </div>
           )}
           
@@ -55,7 +62,7 @@ export function SaveProjectDialog({ isOpen, onClose, onSave, isSaving }: SavePro
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
-                setError('');
+                setValidationError('');
               }}
               className="w-full px-4 py-2 rounded-md bg-[#40444B] border border-[#202225] focus:outline-none focus:ring-2 focus:ring-[#7289DA]"
               placeholder="My Awesome Bot"
