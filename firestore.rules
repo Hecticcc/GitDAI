@@ -27,20 +27,25 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isStaff();
       allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isStaff();
       allow delete: if isAdmin();
     }
     
     // Roles collection
     match /roles/{roleId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin();
+      allow create, update, delete: if isAdmin();
     }
     
     // User roles collection
     match /user_roles/{userRoleId} {
       allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        isAuthenticated() && 
+        userRoleId == request.auth.uid + '_user' && 
+        request.resource.data.role == 'user'
+      );
+      allow update, delete: if isAdmin();
     }
     
     // Pterodactyl user mappings

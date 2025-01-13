@@ -37,6 +37,9 @@ const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Default role for new users
+const DEFAULT_ROLE = 'user';
+
 export interface UserData {
   email: string;
   username: string;
@@ -48,6 +51,7 @@ export interface UserData {
   servers: string[];
   id: string;
   tokens: number;
+  role: string;
 }
 
 export async function createPterodactylUser(email: string, password: string, username: string, firstName: string, lastName: string) {
@@ -166,13 +170,23 @@ export async function registerUser(email: string, password: string, username: st
       lastLogin: Timestamp.now(),
       dob,
       servers: [],
-      tokens: 500 // Give 500 tokens on registration
+      tokens: 500, // Give 500 tokens on registration
+      role: DEFAULT_ROLE // Assign default user role
     };
     
     try {
       // Create user document after authentication
       const userRef = doc(db, 'users', userCredential.user.uid);
       await setDoc(userRef, userData);
+      
+      // Create user role document
+      const userRoleRef = doc(db, 'user_roles', `${userCredential.user.uid}_${DEFAULT_ROLE}`);
+      await setDoc(userRoleRef, {
+        userId: userCredential.user.uid,
+        role: DEFAULT_ROLE,
+        assignedAt: Timestamp.now(),
+        assignedBy: 'system'
+      });
 
     } catch (error) {
       console.error('Firestore Error:', error);
