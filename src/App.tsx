@@ -12,6 +12,8 @@ import { SolutionMessage } from './components/SolutionMessage';
 import { DeploymentStatus } from './components/DeploymentStatus';
 import { ProjectList } from './components/ProjectList';
 import { SaveProjectDialog } from './components/SaveProjectDialog';
+import { ResetConfirmDialog } from './components/ResetConfirmDialog';
+import { ServerTimer } from './components/ServerTimer';
 
 interface ChatMessage {
   type: 'user' | 'system';
@@ -98,13 +100,49 @@ function App() {
   const [isSaving, setIsSaving] = React.useState(false);
   const [showSaveDialog, setShowSaveDialog] = React.useState(false);
   const [showProjects, setShowProjects] = React.useState(false);
+  const [showResetConfirm, setShowResetConfirm] = React.useState(false);
+  const [serverStartTime, setServerStartTime] = React.useState<number | null>(null);
   const chatRef = React.useRef<HTMLDivElement>(null);
+
+  // Get server duration based on user role
+  const getServerDuration = (role: string) => {
+    switch (role?.toLowerCase()) {
+      case 'premium':
+        return 7200000; // 2 hours in milliseconds
+      default:
+        return 1800000; // 30 minutes in milliseconds
+    }
+  };
+
+  // Handle server expiration
+  const handleServerExpire = async () => {
+    if (user && userData?.servers?.length > 0) {
+      await updateUserServers(user.uid, []);
+      setUserData(prev => prev ? {
+        ...prev,
+        servers: [],
+        serverStartTime: null
+      } : null);
+      setMessages(prev => [...prev, {
+        type: 'system',
+        content: 'Your server has expired and been removed.',
+        isSolution: true
+      }]);
+    }
+  };
 
   React.useEffect(() => {
     if (chatRef.current) {
       chatRef.current.scrollTop = chatRef.current.scrollHeight;
     }
   }, [messages, currentCode]);
+
+  // Initialize server start time from user data
+  React.useEffect(() => {
+    if (userData?.serverStartTime) {
+      setServerStartTime(userData.serverStartTime);
+    }
+  }, [userData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -577,6 +615,82 @@ ${messages
           <div className="flex items-center space-x-2 mb-4">
             <MessageCircle className="w-5 h-5 text-[#7289DA]" />
             <h2 className="text-lg font-semibold">Bot Preview</h2>
+            {userData?.servers?.length > 0 && serverStartTime && (
+              <ServerTimer
+                startTime={serverStartTime}
+                duration={getServerDuration(userData.role)}
+                onExpire={handleServerExpire}
+              />
+            )}
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="ml-auto px-3 py-1.5 text-sm rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all duration-200"
+              title="Reset code to default state"
+            >
+              Reset Code
+            </button>
+            <button
+              onClick={async () => {
+                if (!botToken) {
+                  setMessages(prev => [...prev, {
+                    type: 'system',
+                    content: 'Please set your bot token before deploying',
+                    isSolution: true
+                  }]);
+                  return;
+                }
+
+                if (userData?.servers?.length > 0) {
+                  setMessages(prev => [...prev, {
+                    type: 'system',
+                    content: 'You already have an active server. Please delete your existing server before creating a new one.',
+                    isSolution: true
+                  }]);
+                  return;
+                }
+                
+                try {
+                  setShowDeployment(true);
+                  setDeploymentStatus('creating');
+                  setDeploymentError(undefined);
+
+                  const serverName = `discord-bot-${Date.now()}`;
+                  const serverResponse = await createPterodactylServer(
+                    serverName,
+                    'Discord bot server',
+                    userData?.pterodactylId || ''
+                  );
+
+                  if (!serverResponse?.attributes?.identifier) {
+                    throw new Error('Failed to get server identifier');
+                  }
+                  
+                  // Update user's servers list
+                  if (user) {
+                    await updateUserServers(user.uid, [serverResponse.attributes.identifier]);
+                    setUserData(prev => prev ? {
+                      ...prev,
+                      servers: [serverResponse.attributes.identifier],
+                      serverStartTime: Date.now()
+                    } : null);
+                  }
+
+                  setDeploymentStatus('installing');
+                  await waitForInstallation(serverResponse.attributes.identifier);
+                  setDeploymentStatus('complete');
+                } catch (error) {
+                  setDeploymentError(error instanceof Error ? error.message : 'Failed to deploy server');
+                  setDeploymentStatus('error');
+                }
+              }}
+              className="px-3 py-1.5 text-sm rounded-md bg-[#7289DA]/10 text-[#7289DA] hover:bg-[#7289DA]/20 transition-all duration-200"
+              title="Deploy bot to cloud server"
+            >
+              <div className="flex items-center space-x-2">
+                <Rocket className="w-4 h-4" />
+                <span>Deploy</span>
+              </div>
+            </button>
           </div>
           <div className="space-y-6 flex-1 min-h-0">
             <AnimatedCode code={currentCode} isLoading={isLoading} />
@@ -655,6 +769,26 @@ ${messages
           </div>
         </div>
       )}
+      
+      {/* Reset Confirmation Dialog */}
+      <ResetConfirmDialog
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        onConfirm={() => {
+          const defaultCode = getDefaultCode();
+          setCurrentCode(defaultCode);
+          setCodeHistory(prev => [...prev, {
+            code: defaultCode,
+            timestamp: new Date(),
+            description: 'Reset to default code'
+          }]);
+          setHistoryIndex(prev => prev + 1);
+          setMessages(prev => [...prev, {
+            type: 'system',
+            content: 'Code has been reset to default'
+          }]);
+        }}
+      />
     </div>
   );
 }

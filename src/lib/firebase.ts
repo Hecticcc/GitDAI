@@ -52,6 +52,7 @@ export interface UserData {
   id: string;
   tokens: number;
   role: string;
+  serverStartTime?: number;
 }
 
 export async function createPterodactylUser(email: string, password: string, username: string, firstName: string, lastName: string) {
@@ -294,6 +295,21 @@ export async function updateUserTokens(userId: string, newTokens: number): Promi
     }, { merge: true });
   } catch (error) {
     console.error('Error updating user tokens:', error);
+    throw error;
+  }
+}
+
+// Update user's servers list
+export async function updateUserServers(userId: string, servers: string[]): Promise<void> {
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, {
+      servers,
+      serverStartTime: servers.length > 0 ? Date.now() : null,
+      updatedAt: Timestamp.now()
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error updating user servers:', error);
     throw error;
   }
 }
