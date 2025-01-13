@@ -129,7 +129,6 @@ export async function getChatResponse(messages: ChatCompletionMessageParam[], mo
     
     // Calculate potential token cost first
     const lastMessage = messages[messages.length - 1];
-    const estimatedTokens = lastMessage.content.length / 4; // Rough estimate
     const estimatedCost = calculateTokenCost(lastMessage.content, model === 'gpt-4');
     
     debug({ stage: 'Estimated Cost', data: estimatedCost });

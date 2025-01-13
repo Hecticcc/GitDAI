@@ -113,10 +113,8 @@ function App() {
     if (userData && userData.tokens < estimatedCost) {
       setMessages(prev => [...prev, {
         type: 'system',
-        content: `Insufficient tokens. This operation requires approximately ${estimatedCost} tokens${
-          useEnhancedAI ? ' (including 2.5x Enhanced AI multiplier)' : ''
-        }, but you only have ${userData.tokens} tokens available.`,
-        isSolution: true
+        content: 'Insufficient tokens available',
+        isInfo: true
       }]);
       return;
     }
@@ -416,6 +414,18 @@ ${messages
                 {message.isSolution ? (
                   <div className="max-w-[80%]">
                     <SolutionMessage message={message.content} />
+                  </div>
+                ) : message.isInfo ? (
+                  <div className="max-w-[80%]">
+                    <div className="bg-[#7289DA]/10 border border-[#7289DA]/20 rounded-lg p-4 flex items-start space-x-3">
+                      <div className="text-[#7289DA]">
+                        <MessageCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="font-medium text-[#7289DA] mb-1">Information</div>
+                        <div className="text-gray-100">{message.content}</div>
+                      </div>
+                    </div>
                   </div>
                 ) : (
                   <div
