@@ -37,10 +37,7 @@ const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Export the initialized app and db for use in other modules
-export { app, db };
-
-interface UserData {
+export interface UserData {
   email: string;
   username: string;
   name: string;
@@ -111,75 +108,16 @@ export async function createPterodactylUser(email: string, password: string, use
   }
 }
 
-async function checkPterodactylUser(email: string, username?: string): Promise<{emailExists: boolean, usernameExists: boolean}> {
-  try {
-    if (!email) {
-      throw new Error('Email is required');
-    }
-
-    const response = await fetch('/.netlify/functions/create-pterodactyl-user', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        email: email.toLowerCase(),
-        username: username?.toLowerCase(),
-        checkOnly: true
-      })
-    });
-
-    let data;
-    try {
-      const text = await response.text();
-      data = text ? JSON.parse(text) : {};
-    } catch (error) {
-      console.error('Failed to parse response:', error);
-      data = {};
-    }
-    
-    return {
-      emailExists: !response.ok && (
-        response.status === 409 || 
-        data?.error?.toLowerCase?.()?.includes('email already exists') ||
-        data?.error?.toLowerCase?.()?.includes('email is already taken')
-      ),
-      usernameExists: !response.ok && (
-        response.status === 409 ||
-        data?.error?.toLowerCase?.()?.includes('username already exists') ||
-        data?.error?.toLowerCase?.()?.includes('username is already taken')
-      )
-    };
-  } catch (error) {
-    console.error('Error checking Pterodactyl user:', error);
-    throw new Error('Unable to verify user availability');
-  }
-}
-
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
-    // Clear any existing auth state first
-    await signOut(auth);
-    
     // Validate inputs before making any API calls
     if (!email || !password || !username || !dob) {
       throw new Error('All fields are required');
-    }
-    
-    // Check Pterodactyl first before creating Firebase user
-    const { emailExists, usernameExists } = await checkPterodactylUser(email, username);
-    if (emailExists && usernameExists) {
-      throw new Error('Both email and username are already taken');
-    } else if (emailExists) {
-      throw new Error('Email is already registered');
-    } else if (usernameExists) {
-      throw new Error('Username is already taken');
     }
 
     // Create Firebase user
     let userCredential;
     try {
-      // Create Firebase user only after Pterodactyl check passes
       userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password);
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
@@ -187,10 +125,9 @@ export async function registerUser(email: string, password: string, username: st
       }
       throw error;
     }
-
-    let pterodactylId;
     
     // Create Pterodactyl user
+    let pterodactylId;
     try {
       pterodactylId = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
       
@@ -224,46 +161,23 @@ export async function registerUser(email: string, password: string, username: st
       email: email.toLowerCase(),
       username: username.toLowerCase(),
       name: username,
-      pterodactylId: String(pterodactylId), // Convert to string to ensure consistent type
+      pterodactylId: String(pterodactylId),
       createdAt: Timestamp.now(),
       lastLogin: Timestamp.now(),
       dob,
-      servers: [] as string[],
+      servers: [],
       tokens: 500 // Give 500 tokens on registration
     };
     
     try {
       // Create user document after authentication
       const userRef = doc(db, 'users', userCredential.user.uid);
-      await setDoc(userRef, {
-        ...userData,
-        createdAt: Timestamp.now(),
-        lastLogin: Timestamp.now()
-      });
-      
-      // Assign default User role
-      try {
-        await assignRole(userCredential.user.uid, 'User', userCredential.user.uid);
-      } catch (error) {
-        console.error('Error assigning default role:', error);
-        // If role assignment fails, clean up
-        await userCredential.user.delete();
-        throw new Error('Failed to assign default role');
-      }
-      
-      // Verify the document was created
-      const docSnap = await getDoc(userRef);
-      if (!docSnap.exists()) {
-        throw new Error('Failed to create user document');
-      }
+      await setDoc(userRef, userData);
 
     } catch (error) {
-      // Clean up Firebase user if Pterodactyl creation fails
-      if (userCredential?.user) {
-        await userCredential.user.delete();
-      }
-      
       console.error('Firestore Error:', error);
+      // If Firestore save fails, clean up
+      await userCredential.user.delete();
       throw new Error(`Failed to save user data: ${error.message}`);
     }
     
@@ -277,8 +191,6 @@ export async function registerUser(email: string, password: string, username: st
     return userCredential.user;
   } catch (error) {
     console.error('Error during registration:', error);
-    // Ensure user is logged out on any error
-    await signOut(auth);
     throw error;
   }
 }
