@@ -37,11 +37,13 @@ export function DeploymentStatus({
     {
       id: 'complete',
       title: 'Complete',
-      icon: Check,
+      icon: currentStep === 'complete' ? Check : Loader,
       description: serverDetails ? (
         <div className="space-y-2">
           <p>Server created successfully! You can now access your server at:</p>
-          <div className="bg-[#2F3136] p-4 rounded-lg space-y-3">
+          <div className={`bg-[#2F3136] p-4 rounded-lg space-y-3 transition-all duration-300 ${
+            currentStep !== 'complete' ? 'blur-sm select-none' : ''
+          }`}>
             <div>
               <div className="text-sm text-gray-400">Panel URL</div>
               <a 
@@ -105,12 +107,15 @@ export function DeploymentStatus({
                   <div className="relative">
                     <div className={`
                       w-8 h-8 rounded-full flex items-center justify-center
-                      ${isActive ? 'bg-[#7289DA] animate-pulse' : ''}
+                      ${isActive && step.id !== 'complete' ? 'bg-[#7289DA] animate-pulse' : ''}
                       ${isComplete ? 'bg-green-500' : ''}
                       ${isPending ? 'bg-gray-700' : ''}
+                      ${step.id === 'complete' && currentStep === 'complete' ? 'bg-green-500' : ''}
                     `}>
-                      {isActive ? (
+                      {isActive && step.id !== 'complete' ? (
                         <Loader className="w-5 h-5 animate-spin" />
+                      ) : step.id === 'complete' && currentStep === 'complete' ? (
+                        <Check className="w-5 h-5" />
                       ) : (
                         <StepIcon className="w-5 h-5" />
                       )}
