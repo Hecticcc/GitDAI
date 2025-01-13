@@ -483,7 +483,7 @@ ${messages
                     <Sparkles className={`w-4 h-4 transition-all duration-300 ${
                       useEnhancedAI ? 'animate-pulse' : ''
                     }`} />
-                    <span>Enhanced AI</span>
+                    <span className="font-medium">Enhanced AI</span>
                     {useEnhancedAI && (
                       <span className="absolute -top-1 -right-1 flex h-3 w-3">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-400 opacity-75"></span>
@@ -556,12 +556,12 @@ ${messages
                     }`}
                   >
                     <Rocket className={`w-4 h-4 ${isCreatingServer ? 'animate-pulse' : ''}`} />
-                    <span>{isCreatingServer ? 'Creating Server...' : 'Deploy to Pterodactyl'}</span>
+                    <span className="font-medium">{isCreatingServer ? 'Creating Server...' : 'Deploy A Server'}</span>
                   </button>
                   {userData && (
-                    <div className="flex items-center space-x-2 text-sm">
-                      <span className="text-gray-400">Tokens:</span>
-                      <span className="px-2 py-1 bg-[#7289DA]/10 text-[#7289DA] rounded-md font-medium">
+                    <div className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md bg-[#2F3136] hover:bg-[#40444B] transition-all duration-200">
+                      <span className="text-gray-300 font-medium">Tokens</span>
+                      <span className="px-2 py-0.5 bg-[#7289DA]/20 text-[#7289DA] rounded-md font-semibold">
                         {userData.tokens}
                       </span>
                     </div>
