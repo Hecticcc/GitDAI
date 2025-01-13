@@ -233,6 +233,9 @@ export async function registerUser(email: string, password: string, username: st
         lastLogin: Timestamp.now()
       });
       
+      // Assign default User role
+      await assignRole(userCredential.user.uid, 'User', userCredential.user.uid);
+      
       // Verify the document was created
       const docSnap = await getDoc(userRef);
       if (!docSnap.exists()) {
