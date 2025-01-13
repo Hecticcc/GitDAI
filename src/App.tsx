@@ -4,7 +4,7 @@ import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sp
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
 import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
 import { AuthForms } from './components/AuthForms';
-import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData, updateUserTokens } from './lib/firebase';
+import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData, updateUserTokens, updateUserServers } from './lib/firebase';
 import { createProject, BotProject } from './lib/projects';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
