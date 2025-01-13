@@ -22,6 +22,23 @@ service cloud.firestore {
     function isStaff() {
       return hasRole('staff') || isAdmin();
     }
+    
+    function isProjectOwner(projectId) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/bot_projects/$(projectId)) &&
+             get(/databases/$(database)/documents/bot_projects/$(projectId)).data.userId == request.auth.uid;
+    }
+    
+    // Bot projects collection
+    match /bot_projects/{projectId} {
+      allow read: if isAuthenticated() && 
+                 (resource.data.userId == request.auth.uid || isStaff());
+      allow create: if isAuthenticated() && 
+                   request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                   (resource.data.userId == request.auth.uid || isStaff());
+      allow delete: if isProjectOwner(projectId) || isAdmin();
+    }
 
     // Users collection
     match /users/{userId} {
