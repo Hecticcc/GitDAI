@@ -3,13 +3,15 @@ import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket, LogOut, Save } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
 import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
-import { AuthForms } from './components/AuthForms'; 
+import { AuthForms } from './components/AuthForms';
 import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData, updateUserTokens } from './lib/firebase';
-import { createProject } from './lib/projects';
+import { createProject, BotProject } from './lib/projects';
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
 import { SolutionMessage } from './components/SolutionMessage';
 import { DeploymentStatus } from './components/DeploymentStatus';
+import { ProjectList } from './components/ProjectList';
+import { SaveProjectDialog } from './components/SaveProjectDialog';
 
 interface ChatMessage {
   type: 'user' | 'system';
@@ -94,6 +96,8 @@ function App() {
   const [deploymentError, setDeploymentError] = React.useState<string>();
   const [showDeployment, setShowDeployment] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
+  const [showSaveDialog, setShowSaveDialog] = React.useState(false);
+  const [showProjects, setShowProjects] = React.useState(false);
   const chatRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -318,36 +322,7 @@ ${messages
               <span>History</span>
             </button>
             <button
-              onClick={async () => {
-                if (!user || isSaving) return;
-                
-                try {
-                  setIsSaving(true);
-                  const projectName = prompt('Enter a name for your bot project:');
-                  if (!projectName) return;
-
-                  const description = prompt('Enter a description (optional):');
-                  
-                  await createProject(user.uid, {
-                    name: projectName,
-                    description: description || '',
-                    code: currentCode
-                  });
-
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: `Project "${projectName}" saved successfully!`
-                  }]);
-                } catch (error) {
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: `Failed to save project: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                    isSolution: true
-                  }]);
-                } finally {
-                  setIsSaving(false);
-                }
-              }}
+              onClick={() => setShowSaveDialog(true)}
               disabled={isSaving}
               className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
                 isSaving ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'hover:bg-[#7289DA]/10'
@@ -355,6 +330,13 @@ ${messages
             >
               <Save className={`w-5 h-5 ${isSaving ? 'animate-pulse' : ''}`} />
               <span>{isSaving ? 'Saving...' : 'Save Project'}</span>
+            </button>
+            <button
+              onClick={() => setShowProjects(true)}
+              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+            >
+              <Bot className="w-5 h-5" />
+              <span>My Projects</span>
             </button>
             <button 
               onClick={handleRollback}
@@ -618,6 +600,60 @@ ${messages
         }}
       />
       </>
+      )}
+      
+      {/* Save Project Dialog */}
+      <SaveProjectDialog
+        isOpen={showSaveDialog}
+        onClose={() => setShowSaveDialog(false)}
+        onSave={async (name, description) => {
+          if (!user) return;
+          try {
+            setIsSaving(true);
+            await createProject(user.uid, {
+              name,
+              description,
+              code: currentCode
+            });
+            setMessages(prev => [...prev, {
+              type: 'system',
+              content: `Project "${name}" saved successfully!`
+            }]);
+            setShowSaveDialog(false);
+          } catch (error) {
+            setMessages(prev => [...prev, {
+              type: 'system',
+              content: `Failed to save project: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              isSolution: true
+            }]);
+          } finally {
+            setIsSaving(false);
+          }
+        }}
+        isSaving={isSaving}
+      />
+
+      {/* Projects List */}
+      {showProjects && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-[#36393F] rounded-lg w-full max-w-4xl mx-4 p-6">
+            <ProjectList
+              userId={user?.uid || ''}
+              onSelect={(project: BotProject) => {
+                setCurrentCode(project.code);
+                setShowProjects(false);
+                setMessages(prev => [...prev, {
+                  type: 'system',
+                  content: `Loaded project: ${project.name}`
+                }]);
+              }}
+              onNew={() => {
+                setShowProjects(false);
+                setShowSaveDialog(true);
+              }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
