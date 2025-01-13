@@ -12,6 +12,20 @@ async function sleep(ms: number) {
 export async function checkServerStatus(serverId: string): Promise<'installing' | 'running' | 'suspended' | 'error'> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+
+  // Validate server ID format first
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!serverId || !uuidRegex.test(serverId)) {
+    debugLogger.log({
+      stage: 'Invalid Server ID',
+      data: { serverId },
+      level: 'error',
+      source: 'pterodactyl-status',
+      requestId
+    });
+    throw new Error('Invalid server ID format');
+  }
+
   let attempt = 1;
   const maxAttempts = 3;
   const baseDelay = 1000; // Base delay of 1 second
@@ -142,70 +156,11 @@ export async function checkServerStatus(serverId: string): Promise<'installing' 
   }
 }
 
+// Simulated installation wait with fixed 200-second timer
 export async function waitForInstallation(serverId: string): Promise<void> {
-  const startTime = Date.now();
-  let consecutiveErrors = 0;
-  let lastKnownStatus = 'installing' as const;
-  const maxConsecutiveErrors = 10; // Increase tolerance for temporary network issues
-  const maxRetryDelay = 10000; // Maximum delay between retries (10 seconds)
-  
-  while (true) {
-    if (Date.now() - startTime > INSTALLATION_TIMEOUT) {
-      throw new Error('Server installation timed out after 5 minutes');
-    }
-
-    try {
-      const status = await checkServerStatus(serverId);
-      consecutiveErrors = 0; // Reset error counter on successful check
-      if (status) lastKnownStatus = status;
-      
-      if (status === 'running') {
-        return;
-      } else if (status === 'error' || status === 'suspended') {
-        throw new Error(`Server installation failed with status: ${status}`);
-      }
-
-      debugLogger.log({
-        stage: 'Installation Progress',
-        data: { 
-          status,
-          elapsedTime: Date.now() - startTime,
-          remainingTimeout: INSTALLATION_TIMEOUT - (Date.now() - startTime),
-          consecutiveErrors
-        },
-        level: 'info',
-        source: 'pterodactyl-status'
-      });
-    } catch (error) {
-      consecutiveErrors++;
-      
-      // Only fail if we've exceeded max retries and last known status was not 'installing'
-      if (consecutiveErrors >= maxConsecutiveErrors) {
-        throw new Error(`Failed to check server status after ${consecutiveErrors} attempts: ${error.message}`);
-      }
-      
-      debugLogger.log({
-        stage: 'Installation Status Check Failed',
-        data: {
-          error: error.message,
-          consecutiveErrors,
-          willRetry: consecutiveErrors < maxConsecutiveErrors,
-          lastKnownStatus
-        },
-        level: 'warn',
-        source: 'pterodactyl-status'
-      });
-    }
-    
-    // Calculate exponential backoff delay with max limit
-    let sleepTime = INSTALLATION_CHECK_INTERVAL;
-    if (consecutiveErrors > 0) {
-      // More aggressive backoff for network issues
-      sleepTime = Math.min(INSTALLATION_CHECK_INTERVAL * Math.pow(2, consecutiveErrors), maxRetryDelay);
-    }
-      
-    await sleep(sleepTime);
-  }
+  return new Promise((resolve) => {
+    setTimeout(resolve, 200000); // 200 seconds
+  });
 }
 
 export async function createPterodactylServer(name: string, description: string, userId: string | number) {
@@ -572,6 +527,102 @@ export async function testCreateServer() {
       },
       level: 'error',
       source: 'pterodactyl-test',
+      requestId
+    });
+    throw error;
+  } finally {
+    debugLogger.endRequest(requestId);
+  }
+}
+
+export async function deletePterodactylServer(serverId: string): Promise<void> {
+  const requestId = crypto.randomUUID();
+  debugLogger.startRequest(requestId);
+
+  try {
+    debugLogger.log({
+      stage: 'Deleting Server',
+      data: { serverId, url: `/.netlify/functions/pterodactyl?serverId=${serverId}` },
+      level: 'info',
+      source: 'pterodactyl',
+      requestId
+    });
+
+    let response;
+    try {
+      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        redirect: 'follow'
+      });
+    } catch (fetchError) {
+      debugLogger.log({
+        stage: 'Fetch Error',
+        data: {
+          message: fetchError instanceof Error ? fetchError.message : 'Unknown fetch error',
+          type: fetchError instanceof Error ? fetchError.name : typeof fetchError
+        },
+        level: 'error',
+        source: 'pterodactyl',
+        requestId
+      });
+      throw new Error(`Network error while deleting server: ${fetchError.message}`);
+    }
+
+    // Log response details
+    debugLogger.log({
+      stage: 'Delete Response',
+      data: {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers),
+        type: response.type,
+        redirected: response.redirected,
+        url: response.url
+      },
+      level: response.ok ? 'info' : 'warn',
+      source: 'pterodactyl',
+      requestId
+    });
+    if (!response.ok) {
+      let errorData;
+      try {
+        const errorText = await response.text();
+        errorData = JSON.parse(errorText);
+      } catch (parseError) {
+        debugLogger.log({
+          stage: 'Error Parse Failed',
+          data: { parseError },
+          level: 'error',
+          source: 'pterodactyl',
+          requestId
+        });
+        throw new Error(`Failed to delete server (${response.status} ${response.statusText})`);
+      }
+      throw new Error(errorData.error || `Failed to delete server (${response.status})`);
+    }
+
+    debugLogger.log({
+      stage: 'Server Deleted',
+      data: { serverId, status: response.status },
+      level: 'info',
+      source: 'pterodactyl',
+      requestId
+    });
+  } catch (error) {
+    debugLogger.log({
+      stage: 'Delete Server Failed',
+      data: {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        serverId
+      },
+      level: 'error',
+      source: 'pterodactyl',
       requestId
     });
     throw error;

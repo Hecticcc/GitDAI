@@ -2,14 +2,16 @@ import React from 'react';
 import { Bot, Calendar, Edit2, Trash2, Plus } from 'lucide-react';
 import { BotProject, getUserProjects, deleteProject } from '../lib/projects';
 import { getUserRoles } from '../lib/roles';
+import { X } from 'lucide-react';
 
 interface ProjectListProps {
   userId: string;
   onSelect: (project: BotProject) => void;
   onNew: () => void;
+  onClose: () => void;
 }
 
-export function ProjectList({ userId, onSelect, onNew }: ProjectListProps) {
+export function ProjectList({ userId, onSelect, onNew, onClose }: ProjectListProps) {
   const [projects, setProjects] = React.useState<BotProject[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
   const [error, setError] = React.useState<string>();
@@ -63,15 +65,15 @@ export function ProjectList({ userId, onSelect, onNew }: ProjectListProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-gray-700 pb-4">
         <h2 className="text-lg font-semibold flex items-center space-x-2">
           <Bot className="w-5 h-5 text-[#7289DA]" />
           <span>Your Bot Projects</span>
         </h2>
-        <div className="flex items-center space-x-4">
-          <div className="text-sm text-gray-400">
+        <div className="flex items-center space-x-3">
+          <span className="text-sm text-gray-400">
             {projects.length} / {maxProjects} projects
-          </div>
+          </span>
           <button
             onClick={onNew}
             disabled={projects.length >= maxProjects}
@@ -83,6 +85,12 @@ export function ProjectList({ userId, onSelect, onNew }: ProjectListProps) {
           >
             <Plus className="w-4 h-4" />
             <span>New Project</span>
+          </button>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-[#40444B] transition-all duration-200"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
       </div>

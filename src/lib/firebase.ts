@@ -1,7 +1,10 @@
 import { initializeApp } from '@firebase/app';
-import { getAnalytics } from '@firebase/analytics';
+import { getAnalytics, isSupported } from '@firebase/analytics';
 import { 
   getAuth, 
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword,
   signOut,
@@ -33,7 +36,15 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
+// Initialize analytics only if supported
+let analytics;
+isSupported().then(supported => {
+  if (supported) {
+    analytics = getAnalytics(app);
+  }
+}).catch(console.error);
+
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -311,6 +322,37 @@ export async function updateUserServers(userId: string, servers: string[]): Prom
   } catch (error) {
     console.error('Error updating user servers:', error);
     throw error;
+  }
+}
+
+// Update user password
+export async function updateUserPassword(currentPassword: string, newPassword: string): Promise<void> {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  
+  if (!user || !user.email) {
+    throw new Error('No authenticated user found');
+  }
+  
+  try {
+    // Re-authenticate user before password change
+    const credential = EmailAuthProvider.credential(user.email, currentPassword);
+    await reauthenticateWithCredential(user, credential);
+    
+    // Update password
+    await updatePassword(user, newPassword);
+  } catch (error) {
+    console.error('Error updating password:', error);
+    
+    if (error.code === 'auth/wrong-password') {
+      throw new Error('Current password is incorrect');
+    } else if (error.code === 'auth/weak-password') {
+      throw new Error('New password is too weak');
+    } else if (error.code === 'auth/requires-recent-login') {
+      throw new Error('Please log in again before changing your password');
+    }
+    
+    throw new Error('Failed to update password');
   }
 }
 

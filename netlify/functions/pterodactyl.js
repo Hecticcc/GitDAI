@@ -161,15 +161,44 @@ const handler = async (event, context) => {
       };
     }
 
+    // Handle DELETE requests for server deletion
+    if (event.httpMethod === 'DELETE') {
+      const serverId = event.queryStringParameters?.serverId;
+      if (!serverId) {
+        throw new Error('Server ID is required');
+      }
+
+      const response = await fetch(
+        `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers/${serverId}`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to delete server: ${response.status} ${response.statusText}`);
+      }
+
+      return {
+        statusCode: 204,
+        headers,
+        body: ''
+      };
+    }
+
     // Validate request method
-    if (event.httpMethod !== 'POST') {
+    if (event.httpMethod !== 'POST' && event.httpMethod !== 'DELETE') {
       log('Method Not Allowed', event.httpMethod, 'error');
       return {
         statusCode: 405,
         headers,
         body: JSON.stringify({
           error: 'Method not allowed',
-          allowedMethods: ['POST'],
+          allowedMethods: ['POST', 'DELETE'],
           requestId,
           logs
         })
@@ -266,15 +295,32 @@ const handler = async (event, context) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
+    // Add proper request options
+    const requestOptions = {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
         'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
       },
       body: JSON.stringify(serverData),
-      signal: controller.signal
+      signal: controller.signal,
+      redirect: 'follow',
+      follow: 5 // Maximum number of redirects to follow
+    };
+
+    log('Request Options', {
+      ...requestOptions,
+      headers: {
+        ...requestOptions.headers,
+        'Authorization': '[REDACTED]'
+      }
+    });
+
+    const response = await fetch(`${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`, {
+      ...requestOptions
     });
 
     clearTimeout(timeout);
@@ -287,6 +333,9 @@ const handler = async (event, context) => {
     log('Raw Response', {
       status: response.status,
       statusText: response.statusText,
+      type: response.type,
+      redirected: response.redirected,
+      url: response.url,
       headers: Object.fromEntries(response.headers),
       body: responseText.substring(0, 1000) + (responseText.length > 1000 ? '...' : '')
     });
@@ -324,23 +373,35 @@ const handler = async (event, context) => {
     // Handle API errors
     if (!response.ok) {
       // Check for specific error conditions
-      let errorMessage;
+      let errorMessage, errorCode;
+
       if (response.status === 502) {
+        errorCode = 'BAD_GATEWAY';
         errorMessage = 'Unable to reach Pterodactyl API. Please check the API endpoint configuration.';
       } else if (response.status === 500) {
+        errorCode = 'INTERNAL_SERVER_ERROR';
         errorMessage = `Pterodactyl server error: ${responseData.error || responseText.substring(0, 100)}`;
       } else if (response.status === 401) {
+        errorCode = 'UNAUTHORIZED';
         errorMessage = 'Invalid or missing API credentials';
       } else if (response.status === 422) {
+        errorCode = 'VALIDATION_ERROR';
         errorMessage = `Invalid server configuration: ${responseData.errors?.join(', ') || 'Unknown validation error'}`;
+      } else if (response.status === 301 || response.status === 302 || response.status === 307 || response.status === 308) {
+        errorCode = 'REDIRECT_ERROR';
+        errorMessage = 'Unexpected redirect occurred. Please check the API URL configuration.';
       } else {
+        errorCode = 'UNKNOWN_ERROR';
         errorMessage = 'Failed to create server';
       }
 
       const errorDetails = {
+        code: errorCode,
         status: response.status,
         statusText: response.statusText,
         message: errorMessage,
+        redirected: response.redirected,
+        redirectUrl: response.redirected ? response.url : undefined,
         body: parsedResponse ? responseData : { error: 'Unparseable response' },
         rawResponse: responseText,
         url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers`
