@@ -23,6 +23,7 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
     confirmPassword: '',
     dob: ''
   });
+  const [errorMessage, setErrorMessage] = React.useState('');
   const [rememberMe, setRememberMe] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [passwordError, setPasswordError] = React.useState('');
@@ -35,6 +36,8 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
     if (name === 'password' || name === 'confirmPassword') {
       setPasswordError('');
     }
+    // Clear error message when user starts typing
+    setErrorMessage('');
   };
 
   const validateForm = () => {
@@ -77,13 +80,14 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
     try {
       if (isLogin) {
         try {
+          setErrorMessage('');
           await loginUser(formData.email, formData.password, rememberMe);
         } catch (error) {
           // Handle specific login errors
           if (error instanceof Error) {
-            onError(error.message);
+            setErrorMessage(error.message);
           } else {
-            onError('Failed to login. Please check your credentials.');
+            setErrorMessage('Failed to login. Please check your credentials.');
           }
           return;
         }
@@ -93,7 +97,7 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
       onSuccess();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
-      onError(errorMessage);
+      setErrorMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -105,8 +109,8 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
         <img 
           src="https://imgur.com/1YoQljt.png" 
           alt="Discord Bot Builder Logo" 
-          width="85" 
-          height="65"
+          width="128" 
+          height="98"
           className="rounded-lg shadow-lg"
         />
       </div>
@@ -114,6 +118,11 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
         <h2 className="text-2xl font-bold text-center mb-6">
           {isLogin ? 'Login' : 'Create Account'}
         </h2>
+        {errorMessage && (
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            {errorMessage}
+          </div>
+        )}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium mb-2">

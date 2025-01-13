@@ -177,11 +177,18 @@ const handler = async (event, context) => {
     }
 
     // Parse and validate request body
-    let requestData;
+    let { name, description, userId } = {};
     try {
-      requestData = JSON.parse(event.body || '{}');
-      if (!requestData.name) {
+      const data = JSON.parse(event.body || '{}');
+      name = data.name;
+      description = data.description;
+      userId = data.userId;
+
+      if (!name) {
         throw new Error('Server name is required');
+      }
+      if (!userId) {
+        throw new Error('User ID is required');
       }
     } catch (error) {
       log('Request Validation Error', error.message, 'error');
@@ -199,8 +206,8 @@ const handler = async (event, context) => {
 
     // Prepare server creation payload
     const serverData = {
-      name: requestData.name,
-      user: Number(process.env.PTERODACTYL_USER_ID),
+      name: name,
+      user: Number(userId),
       docker_image: "ghcr.io/parkervcp/yolks:nodejs_21",
       egg: Number(process.env.PTERODACTYL_EGG_ID),
       startup: "if [[ -d .git ]] && [[ {{AUTO_UPDATE}} == \"1\" ]]; then git pull; fi; if [[ ! -z ${NODE_PACKAGES} ]]; then /usr/local/bin/npm install ${NODE_PACKAGES}; fi; if [[ ! -z ${UNNODE_PACKAGES} ]]; then /usr/local/bin/npm uninstall ${UNNODE_PACKAGES}; fi; if [ -f /home/container/package.json ]; then /usr/local/bin/npm install; fi; if [[ \"${MAIN_FILE}\" == \"*.js\" ]]; then /usr/local/bin/node \"/home/container/${MAIN_FILE}\" ${NODE_ARGS}; else /usr/local/bin/ts-node --esm \"/home/container/${MAIN_FILE}\" ${NODE_ARGS}; fi",

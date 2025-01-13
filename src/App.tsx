@@ -478,10 +478,19 @@ ${messages
                       if (!botToken) {
                         setMessages(prev => [...prev, {
                           type: 'system',
-                          content: 'Please add your bot token first by clicking the "Bot Token" button.',
+                          content: 'Please add your bot token first.',
                           isSolution: true
                         }]);
                         setShowTokenInput(true);
+                        return;
+                      }
+
+                      if (!userData?.pterodactylId) {
+                        setMessages(prev => [...prev, {
+                          type: 'system',
+                          content: 'Unable to find your Pterodactyl account. Please try logging out and back in.',
+                          isSolution: true
+                        }]);
                         return;
                       }
 
@@ -492,7 +501,8 @@ ${messages
                         const serverName = `discord-bot-${Date.now()}`;
                         const server = await createPterodactylServer(
                           serverName,
-                          'Discord bot server created via Bot Builder'
+                          'Discord bot server created via Bot Builder',
+                          userData.pterodactylId
                         );
                         
                         const serverId = server.data.attributes.uuid || server.data.attributes.identifier;

@@ -208,20 +208,20 @@ export async function waitForInstallation(serverId: string): Promise<void> {
   }
 }
 
-export async function createPterodactylServer(name: string, description?: string) {
+export async function createPterodactylServer(name: string, description: string, userId: string | number) {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
 
   debugLogger.log({
     stage: 'Creating Pterodactyl Server',
-    data: { name, description },
+    data: { name, description, userId },
     level: 'info',
     source: 'pterodactyl',
     requestId
   });
 
   try {
-    const requestBody = JSON.stringify({ name, description });
+    const requestBody = JSON.stringify({ name, description, userId });
     debugLogger.log({
       stage: 'Preparing Request',
       data: {
