@@ -16,6 +16,7 @@ interface RegistrationData {
 
 export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
   const [isLogin, setIsLogin] = React.useState(true);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [formData, setFormData] = React.useState<RegistrationData>({
     email: '',
     username: '',
@@ -73,9 +74,10 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateForm()) return;
+    if (!validateForm() || isSubmitting) return;
 
-    setIsLoading(true);
+    setIsSubmitting(true);
+    setErrorMessage('');
 
     try {
       if (isLogin) {
@@ -85,8 +87,10 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
         } catch (error) {
           // Handle specific login errors
           if (error instanceof Error) {
+            setIsSubmitting(false);
             setErrorMessage(error.message);
           } else {
+            setIsSubmitting(false);
             setErrorMessage('Failed to login. Please check your credentials.');
           }
           return;
@@ -97,9 +101,10 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
       onSuccess();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Authentication failed';
+      setIsSubmitting(false);
       setErrorMessage(errorMessage);
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -220,12 +225,12 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
           )}
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={isSubmitting}
             className={`w-full py-2 px-4 rounded-md bg-[#7289DA] hover:bg-[#677BC4] transition-colors ${
-              isLoading ? 'opacity-50 cursor-not-allowed' : ''
+              isSubmitting ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
-            {isLoading ? 'Please wait...' : isLogin ? 'Login' : 'Register'}
+            {isSubmitting ? 'Please wait...' : isLogin ? 'Login' : 'Register'}
           </button>
         </form>
         <div className="mt-4 text-center">

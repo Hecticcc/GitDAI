@@ -158,12 +158,15 @@ async function checkPterodactylUser(email: string, username?: string): Promise<{
 
 export async function registerUser(email: string, password: string, username: string, dob: string) {
   try {
+    // Clear any existing auth state first
+    await signOut(auth);
+    
     // Validate inputs before making any API calls
     if (!email || !password || !username || !dob) {
       throw new Error('All fields are required');
     }
     
-    // Check if email or username exists in Pterodactyl
+    // Check Pterodactyl first before creating Firebase user
     const { emailExists, usernameExists } = await checkPterodactylUser(email, username);
     if (emailExists && usernameExists) {
       throw new Error('Both email and username are already taken');
@@ -176,6 +179,7 @@ export async function registerUser(email: string, password: string, username: st
     // Create Firebase user
     let userCredential;
     try {
+      // Create Firebase user only after Pterodactyl check passes
       userCredential = await createUserWithEmailAndPassword(auth, email.toLowerCase(), password);
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
@@ -183,9 +187,10 @@ export async function registerUser(email: string, password: string, username: st
       }
       throw error;
     }
+
+    let pterodactylId;
     
     // Create Pterodactyl user
-    let pterodactylId;
     try {
       pterodactylId = await createPterodactylUser(email, password, username, 'DiscordAI', 'Bot');
       
@@ -253,9 +258,12 @@ export async function registerUser(email: string, password: string, username: st
       }
 
     } catch (error) {
+      // Clean up Firebase user if Pterodactyl creation fails
+      if (userCredential?.user) {
+        await userCredential.user.delete();
+      }
+      
       console.error('Firestore Error:', error);
-      // If Firestore save fails, clean up
-      await userCredential.user.delete();
       throw new Error(`Failed to save user data: ${error.message}`);
     }
     
@@ -269,6 +277,8 @@ export async function registerUser(email: string, password: string, username: st
     return userCredential.user;
   } catch (error) {
     console.error('Error during registration:', error);
+    // Ensure user is logged out on any error
+    await signOut(auth);
     throw error;
   }
 }
