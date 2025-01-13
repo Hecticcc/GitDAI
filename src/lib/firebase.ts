@@ -37,6 +37,9 @@ const analytics = getAnalytics(app);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+// Export the initialized app and db for use in other modules
+export { app, db };
+
 interface UserData {
   email: string;
   username: string;
@@ -234,7 +237,14 @@ export async function registerUser(email: string, password: string, username: st
       });
       
       // Assign default User role
-      await assignRole(userCredential.user.uid, 'User', userCredential.user.uid);
+      try {
+        await assignRole(userCredential.user.uid, 'User', userCredential.user.uid);
+      } catch (error) {
+        console.error('Error assigning default role:', error);
+        // If role assignment fails, clean up
+        await userCredential.user.delete();
+        throw new Error('Failed to assign default role');
+      }
       
       // Verify the document was created
       const docSnap = await getDoc(userRef);

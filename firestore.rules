@@ -11,34 +11,57 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
-    function isValidNewUser() {
-      let data = request.resource.data;
-      return data.keys().hasAll(['email', 'username', 'createdAt', 'tokens']) &&
-             data.tokens == 500 && // Initial tokens
-             data.email is string &&
-             data.username is string;
+    function hasRole(role) {
+      return isAuthenticated() && exists(/databases/$(database)/documents/user_roles/$(request.auth.uid + '_' + role));
+    }
+    
+    function isAdmin() {
+      return hasRole('administrator');
+    }
+    
+    function isStaff() {
+      return hasRole('staff') || isAdmin();
     }
 
     // Users collection
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidNewUser();
-      allow update: if isOwner(userId) && 
-                   (
-                     // Allow updating lastLogin and other fields
-                     request.resource.data.diff(resource.data).affectedKeys()
-                       .hasAny(['lastLogin', 'updatedAt']) ||
-                     // For token updates, ensure they can only decrease
-                     request.resource.data.tokens < resource.data.tokens
-                   );
+      allow read: if isOwner(userId) || isStaff();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+    
+    // Roles collection
+    match /roles/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+    
+    // User roles collection
+    match /user_roles/{userRoleId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin();
     }
     
     // Pterodactyl user mappings
     match /pterodactyl_users/{pterodactylId} {
       allow read: if isAuthenticated() &&
-                 (resource.data.userId == request.auth.uid);
+                 (resource.data.userId == request.auth.uid || isStaff());
       allow create: if isAuthenticated() &&
                    request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+    
+    // Servers collection
+    match /servers/{serverId} {
+      allow read: if isAuthenticated() && 
+                 (resource.data.userId == request.auth.uid || isStaff());
+      allow create: if isAuthenticated() && 
+                   request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && 
+                   (resource.data.userId == request.auth.uid || isStaff());
+      allow delete: if isAuthenticated() && 
+                   (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }

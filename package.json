@@ -12,6 +12,7 @@
   "dependencies": {
     "lucide-react": "^0.344.0",
     "jszip": "^3.10.1",
+    "@supabase/supabase-js": "^2.39.3",
     "firebase": "^10.8.0",
     "node-fetch": "^3.3.2",
     "form-data": "^4.0.0",
