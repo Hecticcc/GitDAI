@@ -8,6 +8,7 @@ import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData, updateUse
 import { AnimatedCode } from './components/AnimatedCode';
 import { LoadingDots } from './components/LoadingDots';
 import { SolutionMessage } from './components/SolutionMessage';
+import { DeploymentStatus } from './components/DeploymentStatus';
 
 interface ChatMessage {
   type: 'user' | 'system';
@@ -88,6 +89,9 @@ function App() {
   const [isTokenSaved, setIsTokenSaved] = React.useState(false);
   const [showTokenInput, setShowTokenInput] = React.useState(false);
   const [isCreatingServer, setIsCreatingServer] = React.useState(false);
+  const [deploymentStatus, setDeploymentStatus] = React.useState<'creating' | 'installing' | 'complete' | 'error'>('creating');
+  const [deploymentError, setDeploymentError] = React.useState<string>();
+  const [showDeployment, setShowDeployment] = React.useState(false);
   const chatRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
@@ -511,7 +515,11 @@ ${messages
                       if (isCreatingServer) return;
 
                       try {
+                        setShowDeployment(true);
                         setIsCreatingServer(true);
+                        setDeploymentStatus('creating');
+                        setDeploymentError(undefined);
+
                         const serverName = `discord-bot-${Date.now()}`;
                         const server = await createPterodactylServer(
                           serverName,
@@ -525,67 +533,15 @@ ${messages
                           throw new Error('Server ID not found in response');
                         }
                         
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: `Server created successfully. Waiting 200 seconds for installation...`
-                        }]);
+                        setDeploymentStatus('installing');
 
                         // Wait 200 seconds for server to initialize
                         await new Promise(resolve => setTimeout(resolve, 200000));
                         
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: 'Server installation complete. Uploading bot files...'
-                        }]);
-
-                        // Upload bot files
-                        const files = [
-                          {
-                            path: 'bot.js',
-                            content: currentCode
-                          },
-                          {
-                            path: 'package.json',
-                            content: generatePackageJson()
-                          }
-                        ];
-                        
-                        try {
-                          const response = await fetch('/.netlify/functions/upload-files', {
-                            method: 'POST',
-                            headers: {
-                              'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                              serverId,
-                              files
-                            })
-                          });
-
-                          if (!response.ok) {
-                            const error = await response.json();
-                            throw new Error(error.error || 'Failed to upload files');
-                          }
-                          
-                          const result = await response.json();
-                          
-                          if (!result.success) {
-                            throw new Error('File upload failed');
-                          }
-
-                          setMessages(prev => [...prev, {
-                            type: 'system',
-                            content: `Successfully created and configured Pterodactyl server!\nServer ID: ${serverId}\nName: ${server.data.attributes.name}\nFiles uploaded: bot.js, package.json\nUpload results: ${result.results.map(r => `${r.path} (${r.success ? 'success' : 'failed'})`).join(', ')}`
-                          }]);
-                        } catch (error) {
-                          throw new Error(`Failed to upload files: ${error.message}`);
-                        }
+                        setDeploymentStatus('complete');
                       } catch (error) {
-                        setMessages(prev => [...prev, {
-                          type: 'system',
-                          content: `Failed to create Pterodactyl server: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                          isSolution: true
-                        }]);
+                        setDeploymentStatus('error');
+                        setDeploymentError(error instanceof Error ? error.message : 'Unknown error');
                       } finally {
                         setIsCreatingServer(false);
                       }
@@ -672,6 +628,22 @@ ${messages
           </div>
         </div>
       </main>
+      
+      {/* Deployment Status */}
+      <DeploymentStatus
+        isVisible={showDeployment}
+        currentStep={deploymentStatus}
+        error={deploymentError}
+        serverDetails={userData ? {
+          name: `discord-bot-${Date.now()}`,
+          username: userData.username
+        } : undefined}
+        onClose={() => {
+          setShowDeployment(false);
+          setDeploymentStatus('creating');
+          setDeploymentError(undefined);
+        }}
+      />
       </>
       )}
     </div>
