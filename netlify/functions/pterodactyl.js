@@ -179,10 +179,10 @@ const handler = async (event, context) => {
     // Parse and validate request body
     let { name, description, userId } = {};
     try {
-      const data = JSON.parse(event.body || '{}');
-      name = data.name;
-      description = data.description;
-      userId = data.userId;
+      const requestData = JSON.parse(event.body || '{}');
+      name = requestData.name;
+      description = requestData.description;
+      userId = requestData.userId;
 
       if (!name) {
         throw new Error('Server name is required');
@@ -220,14 +220,14 @@ const handler = async (event, context) => {
         AUTO_UPDATE: "0",
         MAIN_FILE: "bot.js"
       },
-      limits: requestData.limits || {
+      limits: {
         memory: 512,
         swap: 0,
         disk: 1024,
         io: 500,
         cpu: 100
       },
-      feature_limits: requestData.feature_limits || {
+      feature_limits: {
         databases: 0,
         backups: 0,
         allocations: 1
@@ -240,7 +240,7 @@ const handler = async (event, context) => {
       start_on_completion: true,
       skip_scripts: false,
       oom_disabled: false,
-      description: requestData.description || 'Discord bot server',
+      description: description || 'Discord bot server',
       nest: Number(process.env.PTERODACTYL_NEST_ID)
     };
 
