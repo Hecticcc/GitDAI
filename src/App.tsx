@@ -552,11 +552,79 @@ ${messages
                     )}
                   </button>
                   {userData && (
-                    <div className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md bg-[#2F3136] hover:bg-[#40444B] transition-all duration-200">
-                      <span className="text-gray-300 font-medium">Tokens</span>
-                      <span className="px-2 py-0.5 bg-[#7289DA]/20 text-[#7289DA] rounded-md font-semibold">
-                        {userData.tokens}
-                      </span>
+                    <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-2 px-3 py-1.5 text-sm rounded-md bg-[#2F3136] hover:bg-[#40444B] transition-all duration-200">
+                        <span className="text-gray-300 font-medium">Tokens</span>
+                        <span className="px-2 py-0.5 bg-[#7289DA]/20 text-[#7289DA] rounded-md font-semibold">
+                          {userData.tokens}
+                        </span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!botToken) {
+                            setMessages(prev => [...prev, {
+                              type: 'system',
+                              content: 'Please set your bot token before deploying',
+                              isSolution: true
+                            }]);
+                            return;
+                          }
+
+                          if (userData?.servers?.length > 0) {
+                            setMessages(prev => [...prev, {
+                              type: 'system',
+                              content: 'You already have an active server. Please delete your existing server before creating a new one.',
+                              isSolution: true
+                            }]);
+                            return;
+                          }
+                          
+                          try {
+                            setShowDeployment(true);
+                            setDeploymentStatus('creating');
+                            setDeploymentError(undefined);
+
+                            // Validate user data
+                            if (!userData?.pterodactylId) {
+                              throw new Error('User account not properly configured. Please try logging out and back in.');
+                            }
+
+                            const serverName = `discord-bot-${Date.now()}`;
+                            const serverResponse = await createPterodactylServer(
+                              serverName,
+                              'Discord bot server',
+                              userData.pterodactylId
+                            );
+
+                            // Update user's servers list
+                            if (user) {
+                              await updateUserServers(user.uid, [serverResponse.data.attributes.identifier]);
+                              setUserData(prev => prev ? {
+                                ...prev,
+                                servers: [serverResponse.data.attributes.identifier],
+                                serverStartTime: Date.now()
+                              } : null);
+                            }
+
+                            setDeploymentStatus('installing');
+                            await waitForInstallation(serverResponse.data.attributes.identifier);
+                            setDeploymentStatus('complete');
+                          } catch (error) {
+                            setDeploymentError(error instanceof Error ? error.message : 'Failed to deploy server');
+                            setDeploymentStatus('error');
+                          }
+                        }}
+                        className="group relative flex items-center space-x-2 px-4 py-2 text-sm font-medium rounded-lg bg-gradient-to-r from-[#7289DA] to-[#5865F2] hover:from-[#5865F2] hover:to-[#7289DA] transition-all duration-300 transform hover:scale-105 hover:shadow-lg overflow-hidden"
+                      >
+                        <div className="absolute inset-0 bg-white/10 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                        <div className="absolute -inset-full h-full w-1/2 z-5 block transform -skew-x-12 bg-gradient-to-r from-transparent to-white opacity-20 group-hover:animate-shine" />
+                        <Rocket className="w-4 h-4" />
+                        <span className="relative z-10">Deploy A Server</span>
+                        <div className="absolute top-0 right-0 h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-20" />
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-white/30" />
+                        </div>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -615,82 +683,22 @@ ${messages
           <div className="flex items-center space-x-2 mb-4">
             <MessageCircle className="w-5 h-5 text-[#7289DA]" />
             <h2 className="text-lg font-semibold">Bot Preview</h2>
-            {userData?.servers?.length > 0 && serverStartTime && (
-              <ServerTimer
-                startTime={serverStartTime}
-                duration={getServerDuration(userData.role)}
-                onExpire={handleServerExpire}
-              />
-            )}
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className="ml-auto px-3 py-1.5 text-sm rounded-md bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all duration-200"
-              title="Reset code to default state"
-            >
-              Reset Code
-            </button>
-            <button
-              onClick={async () => {
-                if (!botToken) {
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: 'Please set your bot token before deploying',
-                    isSolution: true
-                  }]);
-                  return;
-                }
-
-                if (userData?.servers?.length > 0) {
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: 'You already have an active server. Please delete your existing server before creating a new one.',
-                    isSolution: true
-                  }]);
-                  return;
-                }
-                
-                try {
-                  setShowDeployment(true);
-                  setDeploymentStatus('creating');
-                  setDeploymentError(undefined);
-
-                  const serverName = `discord-bot-${Date.now()}`;
-                  const serverResponse = await createPterodactylServer(
-                    serverName,
-                    'Discord bot server',
-                    userData?.pterodactylId || ''
-                  );
-
-                  if (!serverResponse?.attributes?.identifier) {
-                    throw new Error('Failed to get server identifier');
-                  }
-                  
-                  // Update user's servers list
-                  if (user) {
-                    await updateUserServers(user.uid, [serverResponse.attributes.identifier]);
-                    setUserData(prev => prev ? {
-                      ...prev,
-                      servers: [serverResponse.attributes.identifier],
-                      serverStartTime: Date.now()
-                    } : null);
-                  }
-
-                  setDeploymentStatus('installing');
-                  await waitForInstallation(serverResponse.attributes.identifier);
-                  setDeploymentStatus('complete');
-                } catch (error) {
-                  setDeploymentError(error instanceof Error ? error.message : 'Failed to deploy server');
-                  setDeploymentStatus('error');
-                }
-              }}
-              className="px-3 py-1.5 text-sm rounded-md bg-[#7289DA]/10 text-[#7289DA] hover:bg-[#7289DA]/20 transition-all duration-200"
-              title="Deploy bot to cloud server"
-            >
-              <div className="flex items-center space-x-2">
-                <Rocket className="w-4 h-4" />
-                <span>Deploy</span>
-              </div>
-            </button>
+            <div className="flex items-center space-x-2 ml-auto">
+              {userData?.servers?.length > 0 && serverStartTime && (
+                <ServerTimer
+                  startTime={serverStartTime}
+                  duration={getServerDuration(userData.role)}
+                  onExpire={handleServerExpire}
+                />
+              )}
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="p-1.5 rounded-md text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+                title="Reset code to default state"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="space-y-6 flex-1 min-h-0">
             <AnimatedCode code={currentCode} isLoading={isLoading} />

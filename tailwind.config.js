@@ -5,6 +5,12 @@ export default {
     extend: {
       animation: {
         'ping-slow': 'ping 3s cubic-bezier(0, 0, 0.2, 1) infinite',
+        'shine': 'shine 1.5s infinite',
+      },
+      keyframes: {
+        shine: {
+          '100%': { left: '125%' },
+        },
       },
     },
   },

@@ -222,6 +222,12 @@ export async function createPterodactylServer(name: string, description: string,
 
   try {
     const requestBody = JSON.stringify({ name, description, userId });
+    
+    // Validate userId
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
+
     debugLogger.log({
       stage: 'Preparing Request',
       data: {
@@ -370,7 +376,7 @@ export async function createPterodactylServer(name: string, description: string,
     }
 
     debugLogger.log({
-      stage: 'Received Response',
+      stage: 'Validating Response',
       data: {
         status: response.status,
         statusText: response.statusText,
@@ -382,6 +388,15 @@ export async function createPterodactylServer(name: string, description: string,
       source: 'pterodactyl',
       requestId
     });
+
+    // Validate server identifier
+    if (!responseData?.data?.attributes?.identifier) {
+      debugLogger.error('Missing Server Identifier', {
+        response: responseData,
+        userId
+      }, 'pterodactyl', { requestId });
+      throw new Error('Server creation succeeded but no identifier was returned. Please check the Pterodactyl panel.');
+    }
 
     if (!response.ok) {
       const errorData = responseData?.error || responseData?.message || responseData;
