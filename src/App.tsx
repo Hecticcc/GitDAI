@@ -410,6 +410,103 @@ ${messages
               <span>Download</span>
             </button>
             <button
+              onClick={async () => {
+                if (!botToken) {
+                  setMessages(prev => [...prev, {
+                    type: 'system',
+                    content: 'Please set your bot token first',
+                    isSolution: true
+                  }]);
+                  return;
+                }
+                
+                try {
+                  setIsCreatingServer(true);
+                  setShowDeployment(true);
+                  setDeploymentStatus('creating');
+                  setDeploymentError(undefined);
+                  
+                  const serverName = `discord-bot-${Date.now()}`;
+                  const response = await createPterodactylServer(serverName, 'Discord bot server', userData.pterodactylId);
+                  
+                  if (!response?.data?.attributes?.identifier) {
+                    throw new Error('Failed to get server identifier');
+                  }
+                  
+                  const serverId = response.data.attributes.identifier;
+                  
+                  // Update user's servers list
+                  await updateUserServers(user.uid, [serverId]);
+                  setUserData(prev => prev ? {
+                    ...prev,
+                    servers: [serverId],
+                    serverStartTime: Date.now()
+                  } : null);
+                  
+                  setServerStartTime(Date.now());
+                  setDeploymentStatus('installing');
+                  
+                  // Wait for installation
+                  await waitForInstallation(serverId);
+                  
+                  // Upload bot files
+                  const files = [{
+                    path: 'bot.js',
+                    content: updateBotToken(currentCode, botToken)
+                  }];
+                  
+                  await fetch('/.netlify/functions/upload-files', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                      serverId,
+                      files
+                    })
+                  });
+                  
+                  setDeploymentStatus('complete');
+                  setMessages(prev => [...prev, {
+                    type: 'system',
+                    content: 'Server created successfully! You can now access it through the panel.',
+                    isSolution: true
+                  }]);
+                } catch (error) {
+                  setDeploymentStatus('error');
+                  setDeploymentError(error instanceof Error ? error.message : 'Failed to create server');
+                  setMessages(prev => [...prev, {
+                    type: 'system',
+                    content: `Failed to create server: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                    isSolution: true
+                  }]);
+                } finally {
+                  setIsCreatingServer(false);
+                }
+              }}
+              disabled={isCreatingServer || !userData}
+              className={`relative flex items-center space-x-2 px-4 py-2 rounded-md transition-all duration-300 ${
+                isCreatingServer || !userData
+                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                  : 'bg-gradient-to-r from-[#7289DA] to-[#5865F2] hover:from-[#5865F2] hover:to-[#7289DA] text-white shadow-lg hover:shadow-[#7289DA]/20 hover:-translate-y-0.5'
+              } group overflow-hidden`}
+            >
+              {/* Animated background effect */}
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              
+              <Rocket className={`w-5 h-5 transition-transform duration-300 group-hover:rotate-12 ${
+                isCreatingServer ? 'animate-pulse' : ''
+              }`} />
+              <span className="font-medium">
+                {isCreatingServer ? 'Creating...' : 'Deploy Server'}
+              </span>
+              
+              {/* Shine effect */}
+              <div className="absolute inset-0 opacity-0 group-hover:opacity-100">
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+              </div>
+            </button>
+            <button
               onClick={() => logoutUser()}
               className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
             >
