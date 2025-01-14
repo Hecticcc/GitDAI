@@ -5,7 +5,7 @@ import { Code } from 'lucide-react';
 import JSZip from 'jszip';
 import { MessageCircle, Download, History, Bot, ChevronRight, Undo, X, Clock, Sparkles, Rocket, LogOut, Save, Settings } from 'lucide-react';
 import { getChatResponse, extractCodeBlock, generatePackageJson, ModelType, updateBotToken, getDefaultCode } from './lib/openai';
-import { createPterodactylServer, testCreateServer, waitForInstallation } from './lib/pterodactyl';
+import { createPterodactylServer, testCreateServer, waitForInstallation, deletePterodactylServer } from './lib/pterodactyl';
 import { AuthForms } from './components/AuthForms';
 import { useAuth, checkSavedLogin, loginUser, logoutUser, getUserData, updateUserTokens, updateUserServers } from './lib/firebase';
 import { createProject, BotProject } from './lib/projects';
@@ -117,7 +117,7 @@ function App() {
       case 'premium':
         return 7200000; // 2 hours
       default:
-        return 60000; // 1 minute
+        return 300000; // 5 minutes
     }
   };
 
@@ -446,16 +446,8 @@ ${messages
                   const serverId = response.data.attributes.identifier;
                   
                   // Update user's servers list
-                  await updateUserServers(user.uid, [serverId]);
-                  setUserData(prev => prev ? {
-                    ...prev,
-                    servers: [serverId],
-                    serverStartTime: Date.now()
-                  } : null);
-                  
-                  setServerStartTime(Date.now());
+                  await updateUserServers(user.uid, [serverId]);                  
                   setDeploymentStatus('installing');
-                  setServerStartTime(Date.now());
                   
                   // Wait for installation
                   await waitForInstallation(serverId);
@@ -478,6 +470,15 @@ ${messages
                   });
                   
                   setDeploymentStatus('complete');
+                  // Start the timer only after successful deployment
+                  const startTime = Date.now();
+                  setServerStartTime(startTime);
+                  setUserData(prev => prev ? {
+                    ...prev,
+                    servers: [serverId],
+                    serverStartTime: startTime
+                  } : null);
+                  
                   setMessages(prev => [...prev, {
                     type: 'system',
                     content: 'Server created successfully! You can now access it through the panel.',
