@@ -498,6 +498,12 @@ ${messages
                     
                     setDeploymentStatus('complete');
                     
+                    // Pass server details to deployment status
+                    const serverDetails = {
+                      panelUrl: 'https://cp.discordai.net',
+                      username: userData.username
+                    };
+                    
                     setMessages(prev => [...prev, {
                       type: 'system',
                       content: 'Server created successfully! You can now access it through the panel.',
@@ -842,6 +848,10 @@ ${messages
       <DeploymentStatus
         isVisible={showDeployment}
         currentStep={deploymentStatus}
+        serverDetails={userData && {
+          panelUrl: 'https://cp.discordai.net',
+          username: userData.username
+        }}
         error={deploymentError}
         onClose={() => setShowDeployment(false)}
       />

@@ -6,7 +6,7 @@ interface DeploymentStatusProps {
   currentStep: 'creating' | 'installing' | 'complete' | 'error';
   error?: string;
   serverDetails?: {
-    name: string;
+    panelUrl: string;
     username: string;
   };
   onClose: () => void;
@@ -37,7 +37,7 @@ export function DeploymentStatus({
     {
       id: 'complete',
       title: 'Complete',
-      icon: currentStep === 'complete' ? Check : Loader,
+      icon: Check,
       description: serverDetails ? (
         <div className="space-y-2">
           <p>Server created successfully! You can now access your server at:</p>
@@ -47,12 +47,12 @@ export function DeploymentStatus({
             <div>
               <div className="text-sm text-gray-400">Panel URL</div>
               <a 
-                href="https://cp.discordai.net" 
+                href={serverDetails.panelUrl}
                 target="_blank" 
                 rel="noopener noreferrer"
                 className="text-[#7289DA] hover:underline"
               >
-                cp.discordai.net
+                {serverDetails.panelUrl}
               </a>
             </div>
             <div>
@@ -61,7 +61,7 @@ export function DeploymentStatus({
             </div>
             <div>
               <div className="text-sm text-gray-400">Password</div>
-              <div className="text-yellow-400 text-sm">Reset using the panel if you have not set one</div>
+              <div className="text-yellow-400 text-sm">Use your account password to login</div>
             </div>
           </div>
         </div>
