@@ -165,8 +165,20 @@ const handler = async (event, context) => {
     if (event.httpMethod === 'DELETE') {
       const serverId = event.queryStringParameters?.serverId;
       if (!serverId) {
-        throw new Error('Server ID is required');
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            error: 'Server ID is required'
+          })
+        };
       }
+
+      // Log the delete request
+      log('Delete Request', {
+        serverId,
+        url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers/${serverId}`
+      });
 
       const response = await fetch(
         `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers/${serverId}`,
@@ -174,13 +186,42 @@ const handler = async (event, context) => {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
-            'Accept': 'application/json'
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
           }
         }
       );
 
+      // Log the response
+      log('Delete Response', {
+        status: response.status,
+        statusText: response.statusText,
+        headers: Object.fromEntries(response.headers)
+      });
+
       if (!response.ok) {
-        throw new Error(`Failed to delete server: ${response.status} ${response.statusText}`);
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.errors?.[0]?.detail || errorData.message || 'Unknown error';
+        } catch {
+          errorMessage = errorText || `${response.status} ${response.statusText}`;
+        }
+
+        log('Delete Error', {
+          status: response.status,
+          error: errorMessage,
+          text: errorText
+        }, 'error');
+
+        return {
+          statusCode: response.status,
+          headers,
+          body: JSON.stringify({
+            error: `Failed to delete server: ${errorMessage}`
+          })
+        };
       }
 
       return {

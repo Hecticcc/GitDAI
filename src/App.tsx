@@ -357,177 +357,190 @@ ${messages
       ) : (
       <>
       {/* Header */}
-      <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40">
+      <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40 transition-all duration-300">
         <div className="max-w-7xl mx-auto flex items-center justify-between h-[85px]">
-          <div className="flex items-center px-6">
+          <div className="flex items-center pl-6 group">
             <img
               src="https://imgur.com/1YoQljt.png"
               alt="Discord Bot Builder"
-              className="w-[85px] h-[65px] object-contain"
+              className="w-[85px] h-[65px] object-contain transition-transform duration-300 group-hover:scale-105"
             />
           </div>
-          <nav className="flex items-center px-6">
-            <div className="flex items-center space-x-2 p-1 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5">
-            <button
-              onClick={() => setShowHistory(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-            >
-              <History className="w-5 h-5" />
-              <span>History</span>
-            </button>
-            <button
-              onClick={() => setShowSaveDialog(true)}
-              disabled={isSaving}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
-                isSaving ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'hover:bg-[#7289DA]/10'
-              }`}
-            >
-              <Save className={`w-5 h-5 ${isSaving ? 'animate-pulse' : ''}`} />
-              <span>{isSaving ? 'Saving...' : 'Save Project'}</span>
-            </button>
-            <button
-              onClick={() => setShowProjects(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-            >
-              <Bot className="w-5 h-5" />
-              <span>My Projects</span>
-            </button>
-            <button
-              onClick={() => setShowDashboard(true)}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-            >
-              <Settings className="w-5 h-5" />
-              <span>Dashboard</span>
-            </button>
-            <button 
-              onClick={handleRollback}
-              disabled={historyIndex === 0}
-              className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
-                historyIndex === 0 
-                  ? 'text-gray-500 cursor-not-allowed' 
-                  : 'hover:bg-[#7289DA]/10'
-              }`}
-              title={historyIndex === 0 ? 'No previous versions available' : 'Rollback to previous version'}
-            >
-              <Undo className="w-5 h-5" />
-              <span>Rollback</span>
-            </button>
-            <button 
-              onClick={handleDownload}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
-            >
-              <Download className="w-5 h-5" />
-              <span>Download</span>
-            </button>
-            <button
-              onClick={async () => {
-                if (!botToken) {
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: 'Please set your bot token first',
-                    isSolution: true
-                  }]);
-                  return;
-                }
-                
-                try {
-                  setIsCreatingServer(true);
-                  setShowDeployment(true);
-                  setDeploymentStatus('creating');
-                  setDeploymentError(undefined);
-                  
-                  const serverName = `discord-bot-${Date.now()}`;
-                  const response = await createPterodactylServer(serverName, 'Discord bot server', userData.pterodactylId);
-                  
-                  if (!response?.data?.attributes?.identifier) {
-                    throw new Error('Failed to get server identifier');
+          <nav className="flex items-center pr-6 flex-1 justify-end">
+            <div className="flex items-center space-x-3">
+              {/* Project Management Group */}
+              <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
+                <button
+                  onClick={() => setShowProjects(true)}
+                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+                >
+                  <Bot className="w-5 h-5 transition-transform duration-300 group-hover:rotate-12" />
+                  <span>Projects</span>
+                </button>
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  disabled={isSaving}
+                  className={`group flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
+                    isSaving ? 'bg-gray-700 text-gray-400 cursor-not-allowed' : 'hover:bg-[#7289DA]/10'
+                  }`}
+                >
+                  <Save className={`w-5 h-5 transition-transform duration-300 group-hover:scale-110 ${isSaving ? 'animate-pulse' : ''}`} />
+                  <span>{isSaving ? 'Saving...' : 'Save'}</span>
+                </button>
+                <button
+                  onClick={() => setShowHistory(true)}
+                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+                >
+                  <History className="w-5 h-5 transition-transform duration-300 group-hover:-rotate-12" />
+                  <span>History</span>
+                </button>
+              </div>
+
+              {/* Actions Group */}
+              <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
+                <button 
+                  onClick={handleRollback}
+                  disabled={historyIndex === 0}
+                  className={`group flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-200 ${
+                    historyIndex === 0 
+                      ? 'text-gray-500 cursor-not-allowed' 
+                      : 'hover:bg-[#7289DA]/10'
+                  }`}
+                  title={historyIndex === 0 ? 'No previous versions available' : 'Rollback to previous version'}
+                >
+                  <Undo className="w-5 h-5 transition-transform duration-300 group-hover:-rotate-45" />
+                  <span>Undo</span>
+                </button>
+                <button 
+                  onClick={handleDownload}
+                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+                >
+                  <Download className="w-5 h-5 transition-transform duration-300 group-hover:translate-y-0.5" />
+                  <span>Export</span>
+                </button>
+              </div>
+
+              {/* User Group */}
+              <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
+                <button
+                  onClick={() => setShowDashboard(true)}
+                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-[#7289DA]/10 transition-all duration-200"
+                >
+                  <Settings className="w-5 h-5 transition-transform duration-700 group-hover:rotate-90" />
+                  <span>Dashboard</span>
+                </button>
+                <button
+                  onClick={() => logoutUser()}
+                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
+                >
+                  <LogOut className="w-5 h-5 transition-transform duration-300 group-hover:translate-x-0.5" />
+                  <span>Logout</span>
+                </button>
+              </div>
+              
+              {/* Deploy Button */}
+              <button
+                onClick={async () => {
+                  if (!botToken) {
+                    setMessages(prev => [...prev, {
+                      type: 'system',
+                      content: 'Please set your bot token first',
+                      isSolution: true
+                    }]);
+                    return;
                   }
                   
-                  const serverId = response.data.attributes.identifier;
-                  
-                  // Update user's servers list
-                  await updateUserServers(user.uid, [serverId]);                  
-                  setDeploymentStatus('installing');
-                  
-                  // Wait for installation
-                  await waitForInstallation(serverId);
-                  
-                  // Upload bot files
-                  const files = [{
-                    path: 'bot.js',
-                    content: updateBotToken(currentCode, botToken)
-                  }];
-                  
-                  await fetch('/.netlify/functions/upload-files', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                      serverId,
-                      files
-                    })
-                  });
-                  
-                  setDeploymentStatus('complete');
-                  // Start the timer only after successful deployment
-                  const startTime = Date.now();
-                  setServerStartTime(startTime);
-                  setUserData(prev => prev ? {
-                    ...prev,
-                    servers: [serverId],
-                    serverStartTime: startTime
-                  } : null);
-                  
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: 'Server created successfully! You can now access it through the panel.',
-                    isSolution: true
-                  }]);
-                } catch (error) {
-                  setDeploymentStatus('error');
-                  setDeploymentError(error instanceof Error ? error.message : 'Failed to create server');
-                  setMessages(prev => [...prev, {
-                    type: 'system',
-                    content: `Failed to create server: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                    isSolution: true
-                  }]);
-                } finally {
-                  setIsCreatingServer(false);
-                }
-              }}
-              disabled={isCreatingServer || !userData}
-              className={`relative flex items-center space-x-2 px-4 py-2 rounded-md transition-all duration-300 ${
-                isCreatingServer || !userData
-                  ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-[#7289DA] to-[#5865F2] hover:from-[#5865F2] hover:to-[#7289DA] text-white shadow-lg hover:shadow-[#7289DA]/20 hover:-translate-y-0.5'
-              } group overflow-hidden`}
-            >
-              {/* Animated background effect */}
-              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-              
-              <Rocket className={`w-5 h-5 transition-transform duration-300 group-hover:rotate-12 ${
-                isCreatingServer ? 'animate-pulse' : ''
-              }`} />
-              <span className="font-medium">
-                {isCreatingServer ? 'Creating...' : 'Deploy Server'}
-              </span>
-              
-              {/* Shine effect */}
-              <div className="absolute inset-0 opacity-0 group-hover:opacity-100">
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-              </div>
-            </button>
-            <button
-              onClick={() => logoutUser()}
-              className="flex items-center space-x-2 px-3 py-1.5 rounded-md hover:bg-red-500/10 text-red-400 transition-all duration-200"
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Logout</span>
-            </button>
+                  try {
+                    setIsCreatingServer(true);
+                    setShowDeployment(true);
+                    setDeploymentStatus('creating');
+                    setDeploymentError(undefined);
+                    
+                    const serverName = `discord-bot-${Date.now()}`;
+                    const response = await createPterodactylServer(serverName, 'Discord bot server', userData.pterodactylId);
+                    
+                    if (!response?.data?.attributes?.identifier) {
+                      throw new Error('Failed to get server identifier');
+                    }
+                    
+                    const serverId = response.data.attributes.identifier;
+                    
+                    // Update user's servers list
+                    await updateUserServers(user.uid, [serverId]);
+                    setUserData(prev => prev ? {
+                      ...prev,
+                      servers: [serverId],
+                      serverStartTime: Date.now()
+                    } : null);
+                    setServerStartTime(Date.now());
+                    
+                    setDeploymentStatus('installing');
+                    
+                    // Wait for installation
+                    await waitForInstallation(serverId);
+                    
+                    // Upload bot files
+                    const files = [{
+                      path: 'bot.js',
+                      content: updateBotToken(currentCode, botToken)
+                    }];
+                    
+                    await fetch('/.netlify/functions/upload-files', {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json'
+                      },
+                      body: JSON.stringify({
+                        serverId,
+                        files
+                      })
+                    });
+                    
+                    setDeploymentStatus('complete');
+                    
+                    setMessages(prev => [...prev, {
+                      type: 'system',
+                      content: 'Server created successfully! You can now access it through the panel.',
+                      isSolution: true
+                    }]);
+                  } catch (error) {
+                    setDeploymentStatus('error');
+                    setDeploymentError(error instanceof Error ? error.message : 'Failed to create server');
+                    setMessages(prev => [...prev, {
+                      type: 'system',
+                      content: `Failed to create server: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                      isSolution: true
+                    }]);
+                  } finally {
+                    setIsCreatingServer(false);
+                  }
+                }}
+                disabled={isCreatingServer || !userData}
+                className={`relative flex items-center space-x-2 px-5 py-2.5 rounded-md transition-all duration-300 ${
+                  isCreatingServer || !userData
+                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-[#7289DA] to-[#5865F2] hover:from-[#5865F2] hover:to-[#7289DA] text-white shadow-lg hover:shadow-[#7289DA]/20 hover:-translate-y-0.5'
+                } group overflow-hidden`}
+              >
+                {/* Animated background effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+
+                <Rocket className={`w-5 h-5 transition-transform duration-300 group-hover:rotate-12 ${
+                  isCreatingServer ? 'animate-pulse' : ''
+                }`} />
+                <span className="font-medium">
+                  {isCreatingServer ? 'Creating...' : 'Deploy Server'}
+                </span>
+                
+                {/* Shine effect */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100">
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
+                </div>
+              </button>
             </div>
           </nav>
         </div>
+
         {/* Server Timer */}
         {serverStartTime && userData?.servers?.length > 0 && (
           <div className="absolute top-2 right-4">
@@ -701,55 +714,94 @@ ${messages
             </div>
           </form>
         </div>
-
-        {/* Preview Panel */}
-        <div className="flex-1 bg-[#36393F] rounded-lg p-6 hidden lg:flex lg:flex-col min-w-0">
-          <div className="flex items-center space-x-2 mb-4">
-            <MessageCircle className="w-5 h-5 text-[#7289DA]" />
-            <h2 className="text-lg font-semibold">Bot Preview</h2>
-          </div>
-          <div className="space-y-6 flex-1 min-h-0">
-            <AnimatedCode code={currentCode} isLoading={isLoading} />
-          </div>
+        
+        {/* Code Editor */}
+        <div className="w-full lg:w-[65%]">
+          <AnimatedCode code={currentCode} isLoading={isGenerating} />
         </div>
       </main>
+      </>
+      )}
       
-      {/* Dashboard Modal */}
-      <UserDashboard
-        isOpen={showDashboard}
-        onClose={() => setShowDashboard(false)}
-        userData={userData!}
-        codeHistory={codeHistory}
-      />
+      {/* Code Editor */}
+      <div className="w-full lg:w-[65%]">
+        <AnimatedCode code={currentCode} isLoading={isGenerating} />
+      </div>
 
-      {/* Project List */}
-      {showProjects && (
+      {/* History Sidebar */}
+      {showHistory && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <div className="bg-[#36393F] rounded-lg w-full max-w-4xl mx-4 p-6">
-            <ProjectList
-              userId={user.uid}
-              onSelect={(project) => {
-                setCurrentCode(project.code);
-                setShowProjects(false);
-              }}
-              onNew={() => {
-                setShowProjects(false);
-                setShowSaveDialog(true);
-              }}
-              onClose={() => setShowProjects(false)}
-            />
+          <div className="bg-[#36393F] rounded-lg w-full max-w-2xl mx-4">
+            <div className="flex items-center justify-between p-4 border-b border-gray-700">
+              <h2 className="text-lg font-semibold">Code History</h2>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 max-h-[70vh] overflow-y-auto">
+              {codeHistory.map((version, index) => (
+                <button
+                  key={version.timestamp.getTime()}
+                  onClick={() => handleVersionSelect(index)}
+                  className={`w-full text-left p-4 rounded-lg mb-2 transition-colors ${
+                    index === historyIndex
+                      ? 'bg-[#7289DA] text-white'
+                      : 'bg-[#2F3136] hover:bg-[#40444B]'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-medium">{version.description}</div>
+                      <div className="text-sm text-gray-400">
+                        {version.timestamp.toLocaleString()}
+                      </div>
+                    </div>
+                    {index === historyIndex && (
+                      <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                        Current
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Save Project Dialog */}
+      {/* Project List */}
+      {showProjects && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-[#36393F] rounded-lg w-full max-w-4xl">
+            <div className="p-6">
+              <ProjectList
+                userId={user.uid}
+                onSelect={(project) => {
+                  setCurrentCode(project.code);
+                  setShowProjects(false);
+                }}
+                onNew={() => {
+                  setShowSaveDialog(true);
+                  setShowProjects(false);
+                }}
+                onClose={() => setShowProjects(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Save Dialog */}
       <SaveProjectDialog
         isOpen={showSaveDialog}
         onClose={() => setShowSaveDialog(false)}
         onSave={async (name, description) => {
           try {
             setIsSaving(true);
-            await createProject(user.uid, {
+            const projectId = await createProject(user.uid, {
               name,
               description,
               code: currentCode
@@ -757,14 +809,11 @@ ${messages
             setShowSaveDialog(false);
             setMessages(prev => [...prev, {
               type: 'system',
-              content: `Project "${name}" saved successfully!`
-            }]);
-          } catch (error) {
-            setMessages(prev => [...prev, {
-              type: 'system',
-              content: `Failed to save project: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              content: 'Project saved successfully!',
               isSolution: true
             }]);
+          } catch (error) {
+            setSaveError(error instanceof Error ? error.message : 'Failed to save project');
           } finally {
             setIsSaving(false);
           }
@@ -773,7 +822,7 @@ ${messages
         error={saveError}
       />
 
-      {/* Reset Confirm Dialog */}
+      {/* Reset Confirmation */}
       <ResetConfirmDialog
         isOpen={showResetConfirm}
         onConfirm={() => {
@@ -782,13 +831,9 @@ ${messages
           setCodeHistory([{
             code: defaultCode,
             timestamp: new Date(),
-            description: 'Reset to default code'
+            description: 'Reset to default'
           }]);
           setHistoryIndex(0);
-          setMessages([{ 
-            type: 'system', 
-            content: 'Code has been reset to default.' 
-          }]);
         }}
         onClose={() => setShowResetConfirm(false)}
       />
@@ -798,18 +843,16 @@ ${messages
         isVisible={showDeployment}
         currentStep={deploymentStatus}
         error={deploymentError}
-        serverDetails={userData ? {
-          name: `discord-bot-${Date.now()}`,
-          username: userData.username
-        } : undefined}
-        onClose={() => {
-          setShowDeployment(false);
-          setDeploymentStatus('creating');
-          setDeploymentError(undefined);
-        }}
+        onClose={() => setShowDeployment(false)}
       />
-      </>
-      )}
+
+      {/* User Dashboard */}
+      <UserDashboard
+        isOpen={showDashboard}
+        onClose={() => setShowDashboard(false)}
+        userData={userData}
+        codeHistory={codeHistory}
+      />
     </div>
   );
 }
