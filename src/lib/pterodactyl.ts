@@ -418,6 +418,7 @@ export async function createPterodactylServer(name: string, description: string,
 export async function testCreateServer() {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+
   let attempt = 1;
   const maxAttempts = 3;
 
@@ -556,8 +557,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
           'Accept': 'application/json',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
-        },
-        redirect: 'follow'
+        }
       });
     } catch (fetchError) {
       debugLogger.log({
@@ -588,6 +588,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
       source: 'pterodactyl',
       requestId
     });
+
     if (!response.ok) {
       let errorData;
       try {
