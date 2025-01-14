@@ -115,15 +115,25 @@ function App() {
   const getServerDuration = (role: string) => {
     switch (role?.toLowerCase()) {
       case 'premium':
-        return 7200000; // 2 hours in milliseconds
+        return 7200000; // 2 hours
       default:
-        return 1800000; // 30 minutes in milliseconds
+        return 60000; // 1 minute
     }
   };
 
   // Handle server expiration
   const handleServerExpire = async () => {
     if (user && userData?.servers?.length > 0) {
+      const serverId = userData.servers[0];
+      try {
+        // Delete the server using Pterodactyl API
+        await deletePterodactylServer(serverId);
+        console.log('Server deleted successfully:', serverId);
+      } catch (error) {
+        console.error('Error deleting server:', error);
+      }
+
+      // Update user data
       await updateUserServers(user.uid, []);
       setUserData(prev => prev ? {
         ...prev,
@@ -445,6 +455,7 @@ ${messages
                   
                   setServerStartTime(Date.now());
                   setDeploymentStatus('installing');
+                  setServerStartTime(Date.now());
                   
                   // Wait for installation
                   await waitForInstallation(serverId);
@@ -516,6 +527,16 @@ ${messages
             </div>
           </nav>
         </div>
+        {/* Server Timer */}
+        {serverStartTime && userData?.servers?.length > 0 && (
+          <div className="absolute top-2 right-4">
+            <ServerTimer
+              startTime={serverStartTime}
+              duration={getServerDuration(userData.role)}
+              onExpire={handleServerExpire}
+            />
+          </div>
+        )}
       </header>
       
       {/* Main Content */}
