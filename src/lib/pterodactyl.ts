@@ -538,14 +538,11 @@ export async function testCreateServer() {
 export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
-  
-  // Ensure serverId is properly formatted
-  const fullServerId = serverId.includes('-') ? serverId : `${serverId}-0000-0000-0000-000000000000`;
 
   try {
     debugLogger.log({
       stage: 'Deleting Server',
-      data: { serverId: fullServerId },
+      data: { serverId },
       level: 'info',
       source: 'pterodactyl',
       requestId
@@ -553,15 +550,13 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
 
     let response;
     try {
-      response = await fetch(`/.netlify/functions/pterodactyl`, {
+      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
         method: 'DELETE', 
         headers: {
           'Accept': 'application/json',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ serverId: fullServerId })
+          'Pragma': 'no-cache'
+        }
       });
     } catch (fetchError) {
       debugLogger.log({
