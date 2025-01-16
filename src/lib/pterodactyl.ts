@@ -538,14 +538,11 @@ export async function testCreateServer() {
 export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
-  
-  // Extract the first part of the UUID if it contains dashes
-  const shortServerId = serverId.split('-')[0];
 
   try {
     debugLogger.log({
       stage: 'Deleting Server',
-      data: { serverId: shortServerId },
+      data: { serverId },
       level: 'info',
       source: 'pterodactyl',
       requestId
@@ -553,7 +550,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
 
     let response;
     try {
-      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${shortServerId}`, {
+      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
         method: 'DELETE', 
         headers: {
           'Accept': 'application/json',
