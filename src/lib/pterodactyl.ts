@@ -542,7 +542,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
   try {
     debugLogger.log({
       stage: 'Deleting Server',
-      data: { serverId },
+      data: { serverId: `${serverId}-0000-0000-0000-000000000000` },
       level: 'info',
       source: 'pterodactyl',
       requestId
@@ -550,7 +550,9 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
 
     let response;
     try {
-      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
+      // Ensure serverId is in full UUID format
+      const fullServerId = serverId.includes('-') ? serverId : `${serverId}-0000-0000-0000-000000000000`;
+      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${fullServerId}`, {
         method: 'DELETE', 
         headers: {
           'Accept': 'application/json',
