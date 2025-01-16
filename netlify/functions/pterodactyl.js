@@ -73,6 +73,15 @@ function validateEnvironment(log) {
 const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
+  
+  // Add detailed request logging
+  log('Request Details', {
+    method: event.httpMethod,
+    path: event.path,
+    queryParams: event.queryStringParameters,
+    headers: event.headers,
+    body: event.body ? JSON.parse(event.body) : null
+  });
 
   // Always return proper CORS headers for all responses
   const corsHeaders = {
@@ -163,14 +172,32 @@ const handler = async (event, context) => {
 
     // Handle DELETE requests for server deletion
     if (event.httpMethod === 'DELETE') {
-      const serverId = event.queryStringParameters?.serverId;
+      const serverId = event.queryStringParameters?.serverId || '';
+      
+      log('Delete Request Parameters', {
+        serverId,
+        apiUrl: process.env.PTERODACTYL_API_URL,
+        hasApiKey: !!process.env.PTERODACTYL_API_KEY
+      });
+      
       if (!serverId) {
+        log('Missing Server ID', {}, 'error');
         return {
           statusCode: 400,
           headers,
           body: JSON.stringify({
             error: 'Server ID is required'
           })
+        };
+      }
+
+      // Validate server ID format
+      if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(serverId)) {
+        log('Invalid Server ID Format', { serverId }, 'error');
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({ error: 'Invalid server ID format' })
         };
       }
 
@@ -188,6 +215,8 @@ const handler = async (event, context) => {
             'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'User-Agent': 'DiscordAI-Bot/1.0'
           }
         }
       );
@@ -202,12 +231,23 @@ const handler = async (event, context) => {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage;
+        let errorDetails = {};
+        
         try {
           const errorData = JSON.parse(errorText);
+          errorDetails = errorData;
           errorMessage = errorData.errors?.[0]?.detail || errorData.message || 'Unknown error';
         } catch {
           errorMessage = errorText || `${response.status} ${response.statusText}`;
         }
+
+        log('Delete Error Response', {
+          status: response.status,
+          statusText: response.statusText,
+          headers: Object.fromEntries(response.headers),
+          error: errorMessage,
+          details: errorDetails
+        }, 'error');
 
         log('Delete Error', {
           status: response.status,
@@ -220,6 +260,8 @@ const handler = async (event, context) => {
           headers,
           body: JSON.stringify({
             error: `Failed to delete server: ${errorMessage}`
+            details: errorDetails,
+            requestId
           })
         };
       }

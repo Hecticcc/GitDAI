@@ -538,6 +538,19 @@ export async function testCreateServer() {
 export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+  
+  // Validate server ID format
+  const uuidRegex = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(serverId)) {
+    debugLogger.log({
+      stage: 'Invalid Server ID Format',
+      data: { serverId },
+      level: 'error',
+      source: 'pterodactyl',
+      requestId
+    });
+    throw new Error('Invalid server ID format');
+  }
 
   try {
     debugLogger.log({
@@ -551,6 +564,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
     let response;
     try {
       response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
+        cache: 'no-store',
         method: 'DELETE', 
         headers: {
           'Accept': 'application/json',
@@ -591,8 +605,30 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
     if (!response.ok) {
       let errorData;
       try {
-        const errorText = await response.text();
-        errorData = JSON.parse(errorText);
+        const responseText = await response.text();
+        debugLogger.log({
+          stage: 'Error Response Text',
+          data: responseText,
+          level: 'error',
+          source: 'pterodactyl',
+          requestId
+        });
+        
+        try {
+          errorData = JSON.parse(responseText);
+        } catch (parseError) {
+          debugLogger.log({
+            stage: 'Error Parse Failed',
+            data: {
+              text: responseText,
+              error: parseError instanceof Error ? parseError.message : 'Unknown parse error'
+            },
+            level: 'error',
+            source: 'pterodactyl',
+            requestId
+          });
+          throw new Error(`Failed to parse error response: ${responseText}`);
+        }
       } catch (parseError) {
         debugLogger.log({
           stage: 'Error Parse Failed',
@@ -603,6 +639,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
         });
         throw new Error(`Failed to delete server (${response.status} ${response.statusText})`);
       }
+      
       throw new Error(errorData.error || `Failed to delete server (${response.status})`);
     }
 
