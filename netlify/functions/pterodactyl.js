@@ -226,9 +226,30 @@ const handler = async (event, context) => {
 
     // Handle DELETE requests for server deletion
     if (event.httpMethod === 'DELETE') {
-      const serverId = event.queryStringParameters?.serverId || '';
+      // Validate server ID format
+      const serverId = event.queryStringParameters?.serverId;
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      
+      if (!serverId || !uuidRegex.test(serverId)) {
+        log('Invalid Server ID Format', {
+          serverId,
+          valid: false,
+          reason: !serverId ? 'Missing server ID' : 'Invalid UUID format'
+        }, 'error');
+        
+        return {
+          statusCode: 400,
+          headers,
+          body: JSON.stringify({
+            error: 'Invalid server ID format - must be a valid UUID',
+            requestId,
+            logs
+          })
+        };
+      }
+      
       const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
-      const apiUrl = `${baseUrl}/api/application/servers/${serverId}`;
+      const apiUrl = `${baseUrl}/api/application/servers/${serverId.toLowerCase()}`;
       
       log('Delete Request Parameters', {
         serverId,
@@ -236,17 +257,6 @@ const handler = async (event, context) => {
         traceId,
         hasApiKey: !!process.env.PTERODACTYL_API_KEY
       });
-      
-      if (!serverId) {
-        log('Missing Server ID', {}, 'error');
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({
-            error: 'Server ID is required'
-          })
-        };
-      }
 
       // Log the delete request
       log('Delete Request', {
