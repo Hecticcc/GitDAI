@@ -471,7 +471,11 @@ ${messages
                     setDeploymentError(undefined);
                     
                     const serverName = `discord-bot-${Date.now()}`;
-                    const response = await createPterodactylServer(serverName, 'Discord bot server', userData.pterodactylId);
+                    const response = await createPterodactylServer(
+                      serverName,
+                      'Discord bot server',
+                      userData?.pterodactylId || ''
+                    );
                     
                     if (!response?.data?.attributes?.identifier) {
                       throw new Error('Failed to get server identifier');
@@ -523,9 +527,11 @@ ${messages
                     setDeploymentStatus('error');
                     setDeploymentError(error instanceof Error ? error.message : 'Failed to create server');
                     setMessages(prev => [...prev, {
-                      type: 'system',
-                      content: `Failed to create server: ${error instanceof Error ? error.message : 'Unknown error'}`,
-                      isSolution: true
+                      type: 'system', 
+                      content: error instanceof Error && error.message.includes('User ID is required')
+                        ? 'Failed to create server: Please try logging out and back in to refresh your account data.'
+                        : `Failed to create server: ${error instanceof Error ? error.message : 'Unknown error'}`,
+                      isSolution: true 
                     }]);
                   } finally {
                     setIsCreatingServer(false);
