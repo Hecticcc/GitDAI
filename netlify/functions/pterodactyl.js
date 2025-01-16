@@ -74,14 +74,21 @@ const handler = async (event, context) => {
   const logger = createLogger();
   const { log, logs, requestId } = logger;
   
+  // Add request tracing
+  const traceId = event.headers['x-trace-id'] || `trace-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  
   // Add detailed request logging
   log('Request Details', {
     method: event.httpMethod,
     path: event.path,
     queryParams: event.queryStringParameters,
-    headers: event.headers,
-    body: event.body ? JSON.parse(event.body) : null
-  });
+    traceId,
+    headers: Object.fromEntries(Object.entries(event.headers).map(([k, v]) => [k, 
+      k.toLowerCase().includes('authorization') ? '[REDACTED]' : v
+    ])),
+    body: event.body ? JSON.parse(event.body) : null,
+    url: event.rawUrl
+  }, 'debug');
 
   // Always return proper CORS headers for all responses
   const corsHeaders = {
@@ -94,7 +101,8 @@ const handler = async (event, context) => {
   const headers = {
     ...corsHeaders,
     'Content-Type': 'application/json',
-    'X-Request-ID': requestId
+    'X-Request-ID': requestId,
+    'X-Trace-ID': traceId
   };
 
   try {
@@ -147,12 +155,58 @@ const handler = async (event, context) => {
     // Log all environment variables (redacted)
     log('Environment Variables', {
       PTERODACTYL_API_URL: requiredEnvVars.PTERODACTYL_API_URL ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_API_URL_VALUE: requiredEnvVars.PTERODACTYL_API_URL?.replace(/\/+$/, ''),
       PTERODACTYL_API_KEY: requiredEnvVars.PTERODACTYL_API_KEY ? '[SET]' : '[NOT SET]',
+      PTERODACTYL_API_KEY_LENGTH: requiredEnvVars.PTERODACTYL_API_KEY?.length || 0,
       PTERODACTYL_USER_ID: requiredEnvVars.PTERODACTYL_USER_ID ? '[SET]' : '[NOT SET]',
       PTERODACTYL_EGG_ID: requiredEnvVars.PTERODACTYL_EGG_ID ? '[SET]' : '[NOT SET]',
       PTERODACTYL_NEST_ID: requiredEnvVars.PTERODACTYL_NEST_ID ? '[SET]' : '[NOT SET]',
       PTERODACTYL_LOCATION_ID: requiredEnvVars.PTERODACTYL_LOCATION_ID ? '[SET]' : '[NOT SET]'
     }, 'info');
+
+    // Validate API URL format
+    try {
+      const apiUrl = new URL(requiredEnvVars.PTERODACTYL_API_URL);
+      
+      // Clean up URL path
+      const cleanPath = apiUrl.pathname.replace(/\/+/g, '/').replace(/\/+$/, '');
+      
+      // Check if path contains /api
+      if (!cleanPath.includes('/api')) {
+        log('API URL Validation Failed', {
+          url: apiUrl.toString(),
+          path: cleanPath,
+          hostname: apiUrl.hostname
+        }, 'error');
+        throw new Error('Invalid API URL format - must include /api in path');
+      }
+      
+      // Ensure protocol is https
+      if (apiUrl.protocol !== 'https:') {
+        log('API URL Protocol Invalid', {
+          url: apiUrl.toString(),
+          protocol: apiUrl.protocol,
+          hostname: apiUrl.hostname
+        }, 'error');
+        throw new Error('Invalid API URL format - must use HTTPS');
+      }
+      
+      log('API URL Validation', {
+        original: requiredEnvVars.PTERODACTYL_API_URL,
+        parsed: {
+          protocol: apiUrl.protocol,
+          hostname: apiUrl.hostname,
+          pathname: apiUrl.pathname,
+          href: apiUrl.href
+        }
+      }, 'debug');
+    } catch (error) {
+      log('API URL Validation Error', {
+        error: error.message,
+        url: requiredEnvVars.PTERODACTYL_API_URL
+      }, 'error');
+      throw new Error('Invalid API URL configuration');
+    }
 
     // Validate environment first
     const envIssues = validateEnvironment(log);
@@ -174,10 +228,12 @@ const handler = async (event, context) => {
     if (event.httpMethod === 'DELETE') {
       const serverId = event.queryStringParameters?.serverId || '';
       const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
+      const apiUrl = `${baseUrl}/api/application/servers/${serverId}`;
       
       log('Delete Request Parameters', {
         serverId,
-        apiUrl: baseUrl,
+        apiUrl,
+        traceId,
         hasApiKey: !!process.env.PTERODACTYL_API_KEY
       });
       
@@ -195,18 +251,90 @@ const handler = async (event, context) => {
       // Log the delete request
       log('Delete Request', {
         serverId,
-        url: `${baseUrl}/api/application/servers/${serverId}`
+        url: apiUrl,
+        method: 'DELETE',
+        headers: {
+          'Authorization': '[REDACTED]',
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'DiscordAI-Bot/1.0',
+          'X-Trace-ID': traceId
+        }
       });
 
+      // Add timeout and retry logic for delete request
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+
+      let deleteResponse;
+      let attempt = 1;
+      const maxAttempts = 3;
+
+      while (attempt <= maxAttempts) {
+        try {
+          deleteResponse = await fetch(apiUrl, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'User-Agent': 'DiscordAI-Bot/1.0',
+              'X-Trace-ID': traceId,
+              'Cache-Control': 'no-cache'
+            },
+            signal: controller.signal
+          });
+
+          // Break if successful or non-retriable error
+          if (deleteResponse.ok || ![502, 503, 504].includes(deleteResponse.status)) {
+            break;
+          }
+
+          // Log retry attempt
+          log('Delete Retry', {
+            attempt,
+            status: deleteResponse.status,
+            statusText: deleteResponse.statusText,
+            traceId
+          }, 'warn');
+
+          // Wait before retrying
+          if (attempt < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+          }
+
+        } catch (error) {
+          log('Delete Attempt Error', {
+            attempt,
+            error: error.message,
+            traceId
+          }, 'error');
+
+          if (attempt === maxAttempts) {
+            throw error;
+          }
+        }
+
+        attempt++;
+      }
+
+      clearTimeout(timeout);
+
+      if (!deleteResponse) {
+        throw new Error('Failed to connect to Pterodactyl API after multiple attempts');
+      }
+
       const response = await fetch(
-        `${baseUrl}/api/application/servers/${serverId}`,
+        apiUrl,
         {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'User-Agent': 'DiscordAI-Bot/1.0'
+            'User-Agent': 'DiscordAI-Bot/1.0',
+            'X-Trace-ID': traceId,
+            'Cache-Control': 'no-cache'
           }
         }
       );
@@ -215,7 +343,9 @@ const handler = async (event, context) => {
       log('Delete Response', {
         status: response.status,
         statusText: response.statusText,
-        headers: Object.fromEntries(response.headers)
+        headers: Object.fromEntries(response.headers),
+        url: response.url,
+        traceId
       });
 
       if (!response.ok) {
@@ -227,9 +357,14 @@ const handler = async (event, context) => {
           if (response.status === 404) {
             // Server is already gone, return success
             return {
-              statusCode: 204,
+              statusCode: 200,
               headers,
-              body: ''
+              body: JSON.stringify({
+                success: true,
+                message: 'Server already deleted',
+                requestId,
+                traceId
+              })
             };
           } else {
             const errorData = JSON.parse(errorText);
@@ -258,9 +393,11 @@ const handler = async (event, context) => {
           statusCode: response.status,
           headers,
           body: JSON.stringify({
-            error: `Failed to delete server: ${errorMessage}`
+            error: `Failed to delete server: ${errorMessage}`,
             details: errorDetails,
-            requestId
+            requestId,
+            logs,
+            timestamp: new Date().toISOString()
           })
         };
       }
