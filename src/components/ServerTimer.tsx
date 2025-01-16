@@ -10,6 +10,7 @@ interface ServerTimerProps {
 export function ServerTimer({ startTime, duration, onExpire }: ServerTimerProps) {
   const [timeLeft, setTimeLeft] = React.useState(duration);
   const [isWarning, setIsWarning] = React.useState(false);
+  const [isVisible, setIsVisible] = React.useState(true);
 
   React.useEffect(() => {
     const interval = setInterval(() => {
@@ -18,6 +19,7 @@ export function ServerTimer({ startTime, duration, onExpire }: ServerTimerProps)
       
       if (remaining <= 0) {
         clearInterval(interval);
+        setIsVisible(false);
         onExpire();
         return;
       }
@@ -39,6 +41,8 @@ export function ServerTimer({ startTime, duration, onExpire }: ServerTimerProps)
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   };
+
+  if (!isVisible) return null;
 
   return (
     <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-md transition-all duration-300 ${

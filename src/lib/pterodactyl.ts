@@ -12,10 +12,9 @@ async function sleep(ms: number) {
 export async function checkServerStatus(serverId: string): Promise<'installing' | 'running' | 'suspended' | 'error'> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
-
-  // Validate server ID format first
-  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!serverId || !uuidRegex.test(serverId)) {
+  
+  // Validate server ID format
+  if (!serverId) {
     debugLogger.log({
       stage: 'Invalid Server ID',
       data: { serverId },
@@ -539,11 +538,14 @@ export async function testCreateServer() {
 export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
+  
+  // Ensure serverId is properly formatted
+  const fullServerId = serverId.includes('-') ? serverId : `${serverId}-0000-0000-0000-000000000000`;
 
   try {
     debugLogger.log({
       stage: 'Deleting Server',
-      data: { serverId, url: `/.netlify/functions/pterodactyl?serverId=${serverId}` },
+      data: { serverId: fullServerId },
       level: 'info',
       source: 'pterodactyl',
       requestId
@@ -551,13 +553,15 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
 
     let response;
     try {
-      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
-        method: 'DELETE',
+      response = await fetch(`/.netlify/functions/pterodactyl`, {
+        method: 'DELETE', 
         headers: {
           'Accept': 'application/json',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        }
+          'Pragma': 'no-cache',
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ serverId: fullServerId })
       });
     } catch (fetchError) {
       debugLogger.log({
