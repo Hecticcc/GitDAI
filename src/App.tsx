@@ -146,6 +146,13 @@ function App() {
   const handleServerExpire = async () => {
     if (user && userData?.servers?.length > 0) {
       const serverId = userData.servers[0];
+      
+      // Validate server ID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!serverId || !uuidRegex.test(serverId)) {
+        console.error('Invalid server ID format:', serverId);
+        return;
+      }
 
       // Update UI state first to prevent further attempts
       setUserData(prev => prev ? {
@@ -475,14 +482,15 @@ ${messages
                     const response = await createPterodactylServer(
                       serverName,
                       'Discord bot server',
-                      userData?.pterodactylId || ''
+                      userData?.pterodactylId?.toString() || ''
                     );
                     
                     if (!response?.data?.attributes?.identifier) {
                       throw new Error('Failed to get server identifier');
                     }
                     
-                    const serverId = response.data.attributes.identifier;
+                    // Ensure we store the full UUID
+                    const serverId = response.data.attributes.identifier.toLowerCase();
                     
                     await updateUserServers(user.uid, [serverId]);
                     setUserData(prev => prev ? {
