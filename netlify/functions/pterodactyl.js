@@ -173,10 +173,11 @@ const handler = async (event, context) => {
     // Handle DELETE requests for server deletion
     if (event.httpMethod === 'DELETE') {
       const serverId = event.queryStringParameters?.serverId || '';
+      const baseUrl = process.env.PTERODACTYL_API_URL.replace(/\/+$/, '');
       
       log('Delete Request Parameters', {
         serverId,
-        apiUrl: process.env.PTERODACTYL_API_URL,
+        apiUrl: baseUrl,
         hasApiKey: !!process.env.PTERODACTYL_API_KEY
       });
       
@@ -191,30 +192,19 @@ const handler = async (event, context) => {
         };
       }
 
-      // Validate server ID format
-      if (!/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(serverId)) {
-        log('Invalid Server ID Format', { serverId }, 'error');
-        return {
-          statusCode: 400,
-          headers,
-          body: JSON.stringify({ error: 'Invalid server ID format' })
-        };
-      }
-
       // Log the delete request
       log('Delete Request', {
         serverId,
-        url: `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers/${serverId}`
+        url: `${baseUrl}/api/application/servers/${serverId}`
       });
 
       const response = await fetch(
-        `${requiredEnvVars.PTERODACTYL_API_URL}/application/servers/${serverId}`,
+        `${baseUrl}/api/application/servers/${serverId}`,
         {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${requiredEnvVars.PTERODACTYL_API_KEY}`,
             'Accept': 'application/json',
-            'Content-Type': 'application/json'
             'Content-Type': 'application/json',
             'User-Agent': 'DiscordAI-Bot/1.0'
           }
@@ -234,9 +224,18 @@ const handler = async (event, context) => {
         let errorDetails = {};
         
         try {
-          const errorData = JSON.parse(errorText);
-          errorDetails = errorData;
-          errorMessage = errorData.errors?.[0]?.detail || errorData.message || 'Unknown error';
+          if (response.status === 404) {
+            // Server is already gone, return success
+            return {
+              statusCode: 204,
+              headers,
+              body: ''
+            };
+          } else {
+            const errorData = JSON.parse(errorText);
+            errorDetails = errorData;
+            errorMessage = errorData.errors?.[0]?.detail || errorData.message || 'Unknown error';
+          }
         } catch {
           errorMessage = errorText || `${response.status} ${response.statusText}`;
         }

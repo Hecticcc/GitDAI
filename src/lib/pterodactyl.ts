@@ -539,23 +539,26 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
   
-  // Validate server ID format
-  const uuidRegex = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
-  if (!uuidRegex.test(serverId)) {
+  // Validate server ID
+  if (!serverId) {
     debugLogger.log({
-      stage: 'Invalid Server ID Format',
+      stage: 'Missing Server ID',
       data: { serverId },
       level: 'error',
       source: 'pterodactyl',
       requestId
     });
-    throw new Error('Invalid server ID format');
+    throw new Error('Server ID is required');
   }
 
   try {
     debugLogger.log({
       stage: 'Deleting Server',
-      data: { serverId },
+      data: { 
+        serverId,
+        url: `/.netlify/functions/pterodactyl?serverId=${serverId}`,
+        method: 'DELETE'
+      },
       level: 'info',
       source: 'pterodactyl',
       requestId
@@ -605,29 +608,42 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
     if (!response.ok) {
       let errorData;
       try {
-        const responseText = await response.text();
+        const errorText = await response.text();
         debugLogger.log({
           stage: 'Error Response Text',
-          data: responseText,
+          data: errorText,
           level: 'error',
           source: 'pterodactyl',
           requestId
         });
         
         try {
-          errorData = JSON.parse(responseText);
+          errorData = JSON.parse(errorText);
+          
+          // Handle 404 gracefully - server is already gone
+          if (response.status === 404) {
+            debugLogger.log({
+              stage: 'Server Not Found',
+              data: { serverId },
+              level: 'info',
+              source: 'pterodactyl',
+              requestId
+            });
+            // Return success since the server is already gone
+            return;
+          }
         } catch (parseError) {
           debugLogger.log({
             stage: 'Error Parse Failed',
             data: {
-              text: responseText,
+              text: errorText,
               error: parseError instanceof Error ? parseError.message : 'Unknown parse error'
             },
             level: 'error',
             source: 'pterodactyl',
             requestId
           });
-          throw new Error(`Failed to parse error response: ${responseText}`);
+          throw new Error(`Failed to parse error response: ${errorText}`);
         }
       } catch (parseError) {
         debugLogger.log({
