@@ -539,16 +539,17 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
   const requestId = crypto.randomUUID();
   debugLogger.startRequest(requestId);
   
-  // Validate server ID
-  if (!serverId) {
+  // Validate server ID format
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!serverId || !uuidRegex.test(serverId)) {
     debugLogger.log({
-      stage: 'Missing Server ID',
+      stage: 'Invalid Server ID Format',
       data: { serverId },
       level: 'error',
       source: 'pterodactyl',
       requestId
     });
-    throw new Error('Server ID is required');
+    throw new Error('Invalid server ID format - must be a valid UUID');
   }
 
   try {
@@ -556,7 +557,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
       stage: 'Deleting Server',
       data: { 
         serverId,
-        url: `/.netlify/functions/pterodactyl?serverId=${serverId}`,
+        url: `/.netlify/functions/pterodactyl?serverId=${serverId.toLowerCase()}`,
         method: 'DELETE'
       },
       level: 'info',
@@ -566,7 +567,7 @@ export async function deletePterodactylServer(serverId: string): Promise<void> {
 
     let response;
     try {
-      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId}`, {
+      response = await fetch(`/.netlify/functions/pterodactyl?serverId=${serverId.toLowerCase()}`, {
         cache: 'no-store',
         method: 'DELETE', 
         headers: {
