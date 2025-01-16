@@ -146,7 +146,7 @@ function App() {
   const handleServerExpire = async () => {
     if (user && userData?.servers?.length > 0) {
       const serverId = userData.servers[0];
-      
+
       // Update UI state first to prevent further attempts
       setUserData(prev => prev ? {
         ...prev,
@@ -160,7 +160,7 @@ function App() {
         await updateUserServers(user.uid, []);
         setMessages(prev => [...prev, {
           type: 'system',
-          content: 'Your server has expired and been removed.',
+          content: 'Server has been removed.',
           isSolution: true
         }]);
       } catch (error) {
