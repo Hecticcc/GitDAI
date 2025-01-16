@@ -109,17 +109,17 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto">
+    <div className="w-full max-w-md mx-auto p-4">
       <div className="flex justify-center mb-8">
         <img 
           src="https://imgur.com/1YoQljt.png" 
           alt="Discord Bot Builder Logo" 
           width="128" 
           height="98"
-          className="rounded-lg shadow-lg"
+          className="rounded-lg shadow-lg bg-[#36393F] p-2"
         />
       </div>
-      <div className="bg-[#36393F] rounded-lg shadow-lg p-8">
+      <div className="bg-[#36393F] rounded-lg shadow-lg p-8 border border-[#202225]">
         <h2 className="text-2xl font-bold text-center mb-6">
           {isLogin ? 'Login' : 'Create Account'}
         </h2>
@@ -236,10 +236,18 @@ export function AuthForms({ onSuccess, onError }: AuthFormsProps) {
         <div className="mt-4 text-center">
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-[#7289DA] hover:underline text-sm"
+            className="text-[#7289DA] hover:underline text-sm transition-colors duration-200"
           >
             {isLogin ? "Don't have an account? Register" : 'Already have an account? Login'}
           </button>
+        </div>
+      </div>
+      <div className="mt-4 text-center text-sm text-gray-400">
+        <p>By continuing, you agree to our</p>
+        <div className="space-x-2">
+          <a href="#" className="text-[#7289DA] hover:underline">Terms of Service</a>
+          <span>and</span>
+          <a href="#" className="text-[#7289DA] hover:underline">Privacy Policy</a>
         </div>
       </div>
     </div>

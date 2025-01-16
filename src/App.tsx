@@ -146,21 +146,30 @@ function App() {
   const handleServerExpire = async () => {
     if (user && userData?.servers?.length > 0) {
       const serverId = userData.servers[0];
+      // Update UI state first to prevent further attempts
+      setUserData(prev => prev ? {
+        ...prev,
+        servers: [],
+        serverStartTime: null
+      } : null);
+      setServerStartTime(null);
+      
       try {
         await deletePterodactylServer(serverId);
         await updateUserServers(user.uid, []);
-        setUserData(prev => prev ? {
-          ...prev,
-          servers: [],
-          serverStartTime: null
-        } : null);
         setMessages(prev => [...prev, {
           type: 'system',
           content: 'Your server has expired and been removed.',
           isSolution: true
         }]);
       } catch (error) {
-        console.error('Error deleting server:', error);
+        // Server was likely already deleted manually, just update the UI
+        await updateUserServers(user.uid, []);
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: 'Server has been removed.',
+          isSolution: true
+        }]);
       }
     }
   };
@@ -349,7 +358,7 @@ ${messages
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex items-center justify-center min-h-screen bg-[#2C2F33] text-gray-100">
         <AuthForms
           onSuccess={() => {}}
           onError={(error) => {
