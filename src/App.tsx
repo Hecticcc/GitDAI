@@ -18,6 +18,7 @@ import { ProjectList } from './components/ProjectList';
 import { SaveProjectDialog } from './components/SaveProjectDialog';
 import { ResetConfirmDialog } from './components/ResetConfirmDialog';
 import { ServerTimer } from './components/ServerTimer';
+import { debugSystem } from './lib/debugSystem';
 
 interface ChatMessage {
   type: 'user' | 'system';
@@ -42,49 +43,11 @@ function App() {
   const [user, setUser] = React.useState<User | null>(null);
   const [userData, setUserData] = React.useState<UserData | null>(null);
   const [isAuthLoading, setIsAuthLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    // Check for saved login
-    const checkAuth = async () => {
-      const savedEmail = await checkSavedLogin();
-      if (savedEmail) {
-        try {
-          // Attempt to login with saved credentials
-          await loginUser(savedEmail, '', true);
-        } catch (error) {
-          console.error('Auto-login failed:', error);
-        }
-      }
-      setIsAuthLoading(false);
-    };
-
-    // Listen for auth state changes
-    const unsubscribe = useAuth((user) => {
-      setUser(user);
-      setIsAuthLoading(false);
-      if (user) {
-        // Fetch user data when user logs in
-        getUserData(user.uid).then(data => {
-          setUserData(data);
-        }).catch(error => {
-          console.error('Error fetching user data:', error);
-        });
-      } else {
-        setUserData(null);
-      }
-    });
-
-    checkAuth();
-    return unsubscribe;
-  }, []);
-
   const [messages, setMessages] = React.useState<ChatMessage[]>([
     { type: 'system', content: 'Welcome! I can help you create a Discord bot. What would you like to add?' }
   ]);
   const [input, setInput] = React.useState('');
-  const [currentCode, setCurrentCode] = React.useState(() => {
-    return getDefaultCode();
-  });
+  const [currentCode, setCurrentCode] = React.useState(getDefaultCode);
   const [codeHistory, setCodeHistory] = React.useState<CodeVersion[]>([{
     code: getDefaultCode(),
     timestamp: new Date(),
@@ -111,7 +74,66 @@ function App() {
   const [showDashboard, setShowDashboard] = React.useState(false);
   const chatRef = React.useRef<HTMLDivElement>(null);
 
-  // Get server duration based on user role
+  React.useEffect(() => {
+    debugSystem.info('App', 'Initialize', { version: '1.0.0' });
+    
+    const unsubscribe = debugSystem.subscribe((event) => {
+      if (event.level === 'error') {
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: `System Error: ${event.error?.message || 'Unknown error'}`,
+          isSolution: true
+        }]);
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  React.useEffect(() => {
+    if (userData?.serverStartTime) {
+      debugSystem.debug('App', 'Set Server Start Time', { time: userData.serverStartTime });
+      setServerStartTime(userData.serverStartTime);
+    }
+  }, [userData]);
+
+  React.useEffect(() => {
+    const checkAuth = async () => {
+      const savedEmail = await checkSavedLogin();
+      if (savedEmail) {
+        try {
+          await loginUser(savedEmail, '', true);
+        } catch (error) {
+          console.error('Auto-login failed:', error);
+        }
+      }
+      setIsAuthLoading(false);
+    };
+
+    const unsubscribe = useAuth((user) => {
+      setUser(user);
+      setIsAuthLoading(false);
+      if (user) {
+        getUserData(user.uid).then(data => {
+          setUserData(data);
+        }).catch(error => {
+          console.error('Error fetching user data:', error);
+        });
+      } else {
+        setUserData(null);
+      }
+    });
+
+    checkAuth();
+    return unsubscribe;
+  }, []);
+
+  React.useEffect(() => {
+    if (chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+    }
+  }, [messages, currentCode]);
+
   const getServerDuration = (role: string) => {
     switch (role?.toLowerCase()) {
       case 'premium':
@@ -121,49 +143,33 @@ function App() {
     }
   };
 
-  // Handle server expiration
   const handleServerExpire = async () => {
     if (user && userData?.servers?.length > 0) {
       const serverId = userData.servers[0];
       try {
-        // Delete the server using Pterodactyl API
         await deletePterodactylServer(serverId);
-        console.log('Server deleted successfully:', serverId);
+        await updateUserServers(user.uid, []);
+        setUserData(prev => prev ? {
+          ...prev,
+          servers: [],
+          serverStartTime: null
+        } : null);
+        setMessages(prev => [...prev, {
+          type: 'system',
+          content: 'Your server has expired and been removed.',
+          isSolution: true
+        }]);
       } catch (error) {
         console.error('Error deleting server:', error);
       }
-
-      // Update user data
-      await updateUserServers(user.uid, []);
-      setUserData(prev => prev ? {
-        ...prev,
-        servers: [],
-        serverStartTime: null
-      } : null);
-      setMessages(prev => [...prev, {
-        type: 'system',
-        content: 'Your server has expired and been removed.',
-        isSolution: true
-      }]);
     }
   };
-
-  React.useEffect(() => {
-    if (chatRef.current) {
-      chatRef.current.scrollTop = chatRef.current.scrollHeight;
-    }
-  }, [messages, currentCode]);
-
-  // Initialize server start time from user data
-  React.useEffect(() => {
-    if (userData?.serverStartTime) {
-      setServerStartTime(userData.serverStartTime);
-    }
-  }, [userData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading || isGenerating) return;
+
+    debugSystem.info('App', 'Submit Message', { input });
     
     const userMessage = { 
       type: 'user' as const, 
@@ -176,10 +182,15 @@ function App() {
 
     try {
       const model: ModelType = useEnhancedAI ? 'gpt-4' : 'gpt-3.5-turbo';
+      debugSystem.debug('App', 'Generate Response', { model, messageCount: messages.length });
+
       const { content: response, tokenCost } = await getChatResponse(formatMessages([...messages, userMessage]), model);
 
-      // Check if user has enough tokens
       if (tokenCost && userData && userData.tokens < tokenCost.totalCost) {
+        debugSystem.warn('App', 'Insufficient Tokens', { 
+          available: userData.tokens, 
+          required: tokenCost.totalCost 
+        });
         setMessages(prev => [...prev, {
           type: 'system',
           content: 'Insufficient tokens available',
@@ -190,7 +201,6 @@ function App() {
     
       const codeBlock = extractCodeBlock(response);
 
-      // If we used tokens, update the user's token count
       if (tokenCost && userData) {
         const newTokens = userData.tokens - tokenCost.totalCost;
         try {
@@ -200,7 +210,6 @@ function App() {
       }
       
       if (codeBlock) {
-        // Apply bot token to the new code if available
         const codeWithToken = botToken ? updateBotToken(codeBlock, botToken) : codeBlock;
         const newVersion: CodeVersion = {
           code: codeWithToken,
@@ -210,7 +219,6 @@ function App() {
         setCodeHistory(prev => [...prev.slice(0, historyIndex + 1), newVersion]);
         setHistoryIndex(prev => prev + 1);
         setCurrentCode(codeWithToken);
-        // Only show the explanation part before the code block
         const explanation = response.split('```')[0].trim(); 
         if (explanation.toLowerCase().startsWith('error:') || explanation.toLowerCase().startsWith('error detected:')) {
           setMessages(prev => [...prev, { 
@@ -233,6 +241,7 @@ function App() {
         }
       }
     } catch (error) {
+      debugSystem.error('App', 'Message Generation Failed', error as Error);
       setMessages(prev => [...prev, { type: 'system', content: 'Sorry, there was an error generating a response. Please try again.' }]);
       if (error instanceof Error && error.message.includes('API key')) {
         setMessages(prev => [...prev, {
@@ -272,11 +281,10 @@ function App() {
 
   const handleTokenSave = () => {
     if (botToken.trim()) {
+      debugSystem.info('App', 'Save Bot Token', { tokenLength: botToken.length });
       setIsTokenSaved(true);
-      // Update the code with the new token
       const updatedCode = updateBotToken(currentCode, botToken);
       setCurrentCode(updatedCode);
-      // Add new version to history
       const newVersion: CodeVersion = {
         code: updatedCode,
         timestamp: new Date(),
@@ -289,18 +297,18 @@ function App() {
   };
 
   const handleDownload = () => {
+    debugSystem.info('App', 'Download Project', { 
+      codeLength: currentCode.length,
+      hasToken: !!botToken
+    });
     const zip = new JSZip();
     
-    // Add main bot file
     const codeWithToken = botToken 
       ? currentCode.replace('your_bot_token_here', botToken)
       : currentCode;
     zip.file('bot.js', codeWithToken);
-    
-    // Add package.json
     zip.file('package.json', generatePackageJson());
     
-    // Add README with setup instructions
     const readme = `# Discord Bot
 
 ## Setup Instructions
@@ -316,11 +324,8 @@ ${messages
   .join('\n')}
 `;
     zip.file('README.md', readme);
-    
-    // Add .env.example
     zip.file('.env.example', 'TOKEN=your_bot_token_here');
     
-    // Generate and download zip
     zip.generateAsync({ type: 'blob' })
       .then(content => {
         const url = window.URL.createObjectURL(content);
@@ -334,29 +339,33 @@ ${messages
       });
   };
 
+  if (isAuthLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <LoadingDots />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <AuthForms
+          onSuccess={() => {}}
+          onError={(error) => {
+            setMessages(prev => [...prev, {
+              type: 'system',
+              content: `Authentication error: ${error}`,
+              isSolution: true
+            }]);
+          }}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#2C2F33] text-gray-100">
-      {/* Auth Check */}
-      {isAuthLoading ? (
-        <div className="flex items-center justify-center min-h-screen">
-          <LoadingDots />
-        </div>
-      ) : !user ? (
-        <div className="flex items-center justify-center min-h-screen">
-          <AuthForms
-            onSuccess={() => {}}
-            onError={(error) => {
-              setMessages(prev => [...prev, {
-                type: 'system',
-                content: `Authentication error: ${error}`,
-                isSolution: true
-              }]);
-            }}
-          />
-        </div>
-      ) : (
-      <>
-      {/* Header */}
       <header className="bg-[#23272A]/95 backdrop-blur-md border-b border-[#7289DA]/10 sticky top-0 z-40 transition-all duration-300">
         <div className="max-w-7xl mx-auto flex items-center justify-between h-[85px]">
           <div className="flex items-center pl-6 group">
@@ -368,7 +377,6 @@ ${messages
           </div>
           <nav className="flex items-center pr-6 flex-1 justify-end">
             <div className="flex items-center space-x-3">
-              {/* Project Management Group */}
               <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
                 <button
                   onClick={() => setShowProjects(true)}
@@ -396,7 +404,6 @@ ${messages
                 </button>
               </div>
 
-              {/* Actions Group */}
               <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
                 <button 
                   onClick={handleRollback}
@@ -420,7 +427,6 @@ ${messages
                 </button>
               </div>
 
-              {/* User Group */}
               <div className="flex items-center p-1.5 bg-[#2F3136]/50 backdrop-blur-md rounded-lg border border-white/5 shadow-lg">
                 <button
                   onClick={() => setShowDashboard(true)}
@@ -438,7 +444,6 @@ ${messages
                 </button>
               </div>
               
-              {/* Deploy Button */}
               <button
                 onClick={async () => {
                   if (!botToken) {
@@ -465,7 +470,6 @@ ${messages
                     
                     const serverId = response.data.attributes.identifier;
                     
-                    // Update user's servers list
                     await updateUserServers(user.uid, [serverId]);
                     setUserData(prev => prev ? {
                       ...prev,
@@ -476,10 +480,8 @@ ${messages
                     
                     setDeploymentStatus('installing');
                     
-                    // Wait for installation
                     await waitForInstallation(serverId);
                     
-                    // Upload bot files
                     const files = [{
                       path: 'bot.js',
                       content: updateBotToken(currentCode, botToken)
@@ -498,7 +500,6 @@ ${messages
                     
                     setDeploymentStatus('complete');
                     
-                    // Pass server details to deployment status
                     const serverDetails = {
                       panelUrl: 'https://cp.discordai.net',
                       username: userData.username
@@ -528,17 +529,13 @@ ${messages
                     : 'bg-gradient-to-r from-[#7289DA] to-[#5865F2] hover:from-[#5865F2] hover:to-[#7289DA] text-white shadow-lg hover:shadow-[#7289DA]/20 hover:-translate-y-0.5'
                 } group overflow-hidden`}
               >
-                {/* Animated background effect */}
                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-[100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
-
                 <Rocket className={`w-5 h-5 transition-transform duration-300 group-hover:rotate-12 ${
                   isCreatingServer ? 'animate-pulse' : ''
                 }`} />
                 <span className="font-medium">
                   {isCreatingServer ? 'Creating...' : 'Deploy Server'}
                 </span>
-                
-                {/* Shine effect */}
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-100">
                   <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent transform -skew-x-12 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
                 </div>
@@ -547,7 +544,6 @@ ${messages
           </nav>
         </div>
 
-        {/* Server Timer */}
         {serverStartTime && userData?.servers?.length > 0 && (
           <div className="absolute top-2 right-4">
             <ServerTimer
@@ -559,9 +555,7 @@ ${messages
         )}
       </header>
       
-      {/* Main Content */}
       <main className="max-w-[95%] mx-auto p-4 flex flex-col lg:flex-row gap-6 h-[calc(100vh-85px)]">
-        {/* Chat Interface */}
         <div className="w-full lg:w-[35%] flex flex-col bg-[#36393F] rounded-lg overflow-hidden">
           <div 
             ref={chatRef}
@@ -721,20 +715,11 @@ ${messages
           </form>
         </div>
         
-        {/* Code Editor */}
         <div className="w-full lg:w-[65%]">
           <AnimatedCode code={currentCode} isLoading={isGenerating} />
         </div>
       </main>
-      </>
-      )}
-      
-      {/* Code Editor */}
-      <div className="w-full lg:w-[65%]">
-        <AnimatedCode code={currentCode} isLoading={isGenerating} />
-      </div>
 
-      {/* History Sidebar */}
       {showHistory && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div className="bg-[#36393F] rounded-lg w-full max-w-2xl mx-4">
@@ -750,27 +735,26 @@ ${messages
             <div className="p-4 max-h-[70vh] overflow-y-auto">
               {codeHistory.map((version, index) => (
                 <button
-                  key={version.timestamp.getTime()}
+                  key={index}
                   onClick={() => handleVersionSelect(index)}
                   className={`w-full text-left p-4 rounded-lg mb-2 transition-colors ${
                     index === historyIndex
-                      ? 'bg-[#7289DA] text-white'
+                      ? 'bg-[#7289DA]/20 border border-[#7289DA]/30'
                       : 'bg-[#2F3136] hover:bg-[#40444B]'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="font-medium">{version.description}</div>
-                      <div className="text-sm text-gray-400">
-                        {version.timestamp.toLocaleString()}
-                      </div>
+                    <div className="flex items-center space-x-2">
+                      <Clock className="w-4 h-4 text-[#7289DA]" />
+                      <span className="font-medium">{version.timestamp.toLocaleString()}</span>
                     </div>
                     {index === historyIndex && (
-                      <div className="text-xs bg-white/20 px-2 py-1 rounded-full">
+                      <span className="px-2 py-0.5 text-xs font-medium bg-[#7289DA]/20 text-[#7289DA] rounded-full">
                         Current
-                      </div>
+                      </span>
                     )}
                   </div>
+                  <p className="mt-1 text-sm text-gray-400">{version.description}</p>
                 </button>
               ))}
             </div>
@@ -778,15 +762,33 @@ ${messages
         </div>
       )}
 
-      {/* Project List */}
-      {showProjects && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+      {showDeployment && (
+        <DeploymentStatus
+          isVisible={showDeployment}
+          currentStep={deploymentStatus}
+          error={deploymentError}
+          serverDetails={deploymentStatus === 'complete' ? {
+            panelUrl: 'https://cp.discordai.net',
+            username: userData?.username || ''
+          } : undefined}
+          onClose={() => setShowDeployment(false)}
+        />
+      )}
+
+      {showProjects && userData && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#36393F] rounded-lg w-full max-w-4xl">
             <div className="p-6">
               <ProjectList
-                userId={user.uid}
-                onSelect={(project) => {
+                userId={userData.id}
+                onSelect={(project: BotProject) => {
                   setCurrentCode(project.code);
+                  setCodeHistory([{
+                    code: project.code,
+                    timestamp: project.updatedAt.toDate(),
+                    description: project.description || 'Loaded project'
+                  }]);
+                  setHistoryIndex(0);
                   setShowProjects(false);
                 }}
                 onNew={() => {
@@ -800,69 +802,65 @@ ${messages
         </div>
       )}
 
-      {/* Save Dialog */}
-      <SaveProjectDialog
-        isOpen={showSaveDialog}
-        onClose={() => setShowSaveDialog(false)}
-        onSave={async (name, description) => {
-          try {
-            setIsSaving(true);
-            const projectId = await createProject(user.uid, {
-              name,
-              description,
-              code: currentCode
-            });
+      {showSaveDialog && (
+        <SaveProjectDialog
+          isOpen={showSaveDialog}
+          onClose={() => {
             setShowSaveDialog(false);
-            setMessages(prev => [...prev, {
-              type: 'system',
-              content: 'Project saved successfully!',
-              isSolution: true
+            setSaveError(undefined);
+          }}
+          onSave={async (name, description) => {
+            if (!user) return;
+            
+            setIsSaving(true);
+            try {
+              await createProject(user.uid, {
+                name,
+                description,
+                code: currentCode
+              });
+              setShowSaveDialog(false);
+              setMessages(prev => [...prev, {
+                type: 'system',
+                content: 'Project saved successfully!',
+                isSolution: true
+              }]);
+            } catch (error) {
+              setSaveError(error instanceof Error ? error.message : 'Failed to save project');
+            } finally {
+              setIsSaving(false);
+            }
+          }}
+          isSaving={isSaving}
+          error={saveError}
+        />
+      )}
+
+      {showResetConfirm && (
+        <ResetConfirmDialog
+          isOpen={showResetConfirm}
+          onConfirm={() => {
+            const defaultCode = getDefaultCode();
+            setCurrentCode(defaultCode);
+            setCodeHistory([{
+              code: defaultCode,
+              timestamp: new Date(),
+              description: 'Reset to default'
             }]);
-          } catch (error) {
-            setSaveError(error instanceof Error ? error.message : 'Failed to save project');
-          } finally {
-            setIsSaving(false);
-          }
-        }}
-        isSaving={isSaving}
-        error={saveError}
-      />
+            setHistoryIndex(0);
+          }}
+          onClose={() => setShowResetConfirm(false)}
+        />
+      )}
 
-      {/* Reset Confirmation */}
-      <ResetConfirmDialog
-        isOpen={showResetConfirm}
-        onConfirm={() => {
-          const defaultCode = getDefaultCode();
-          setCurrentCode(defaultCode);
-          setCodeHistory([{
-            code: defaultCode,
-            timestamp: new Date(),
-            description: 'Reset to default'
-          }]);
-          setHistoryIndex(0);
-        }}
-        onClose={() => setShowResetConfirm(false)}
-      />
-
-      {/* Deployment Status */}
-      <DeploymentStatus
-        isVisible={showDeployment}
-        currentStep={deploymentStatus}
-        serverDetails={userData && {
-          panelUrl: 'https://cp.discordai.net',
-          username: userData.username
-        }}
-        error={deploymentError}
-        onClose={() => setShowDeployment(false)}
-      />
-
-      {/* User Dashboard */}
-      <UserDashboard
-        isOpen={showDashboard}
-        onClose={() => setShowDashboard(false)}
-        userData={userData}
-        codeHistory={codeHistory}
-      />
+      {showDashboard && userData && (
+        <UserDashboard
+          isOpen={showDashboard}
+          onClose={() => setShowDashboard(false)}
+          userData={userData}
+          codeHistory={codeHistory}
+        />
+      )}
     </div>
   );
 }
